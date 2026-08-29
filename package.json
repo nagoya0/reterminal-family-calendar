@@ -1,0 +1,16 @@
+{
+  "name": "reterminal-family-calendar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "実家の電子ペーパー端末に Google カレンダーを表示する",
+  "scripts": {
+    "preview": "node src/preview.js",
+    "shots": "node src/shots.js"
+  },
+  "dependencies": {
+    "googleapis": "^176.0.0",
+    "puppeteer": "^25.9.0",
+    "sharp": "^0.35.4"
+  }
+}

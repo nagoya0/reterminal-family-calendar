@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# 認証情報は絶対にコミットしない
+*sa-key.json
+*client_secret*.json
+.env
