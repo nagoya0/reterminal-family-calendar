@@ -1,7 +1,10 @@
 // 全シナリオを 1bit PNG に描き出し、余白を実測して表示する。
 // レイアウトを変えたら必ずこれを走らせて目視確認する。
-//   npm run shots            書き出しのみ
-//   npm run shots -- --open  書き出して一覧をブラウザで開く
+//   npm run shots              書き出して一覧をブラウザで開く
+//   npm run shots -- --no-open 書き出すだけ（CI など）
+//
+// 既定で開くのは、レイアウトを変えたら必ず目視する運用にするため。
+// 「開くのを忘れる」余地を残さない。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import sharp from 'sharp';
@@ -70,7 +73,7 @@ writeFileSync(`${OUT}/shots.html`, `<!DOCTYPE html>
 
 console.log(`\n${OUT}/shots.html に ${written.length} 枚まとめました`);
 
-if (process.argv.includes('--open')) {
+if (!process.argv.includes('--no-open')) {
   execFileSync('open', [`${OUT}/shots.html`]);
   console.log('ブラウザで開きました（以降はタブをリロードするだけで最新になります）');
 }

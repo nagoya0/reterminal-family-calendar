@@ -53,13 +53,18 @@ function renderStrip(events, todayKey) {
     const d = describeDay(key);
     const list = eventsForDay(events, key);
     // 帯は狭いので先頭1件だけ。時刻は付けず、複数あるときは件数で補う。
-    // 表記は予定欄の「他N件」と揃える（同じ意味に別表記を混ぜない）
+    // 表記は予定欄の「他N件」と揃える（同じ意味に別表記を混ぜない）。
+    //
+    // 件数はタイトルと別の要素に分ける。同じ要素に入れると、タイトルが長い日は
+    // クランプに飲まれて件数だけが消え、4件ある日が1件の日に見えてしまう。
     const head = list[0] ? escapeHtml(list[0].title) : '—';
-    const extra = list.length > 1 ? `<span class="wday-more">他${list.length - 1}件</span>` : '';
+    const more = list.length > 1
+      ? `\n          <div class="wday-count">他${list.length - 1}件</div>`
+      : '';
     cells.push(`
-        <div class="wday">
+        <div class="wday${more ? ' has-more' : ''}">
           <div class="wday-date">${d.day === 1 ? `${d.month}/1` : d.day}<span class="wday-dow">(${d.weekday})</span></div>
-          <div class="wday-body">${head}${extra}</div>
+          <div class="wday-body">${head}</div>${more}
         </div>`);
   }
   return `<footer class="week">${cells.join('')}\n      </footer>`;
@@ -202,6 +207,11 @@ body {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.wday-more { font-weight: 700; margin-left: 4px; white-space: nowrap; }
+/* 件数を出す日はタイトルを1行に抑え、件数の行を確保する */
+.has-more .wday-body { -webkit-line-clamp: 1; }
+.wday-count {
+  font-size: 19px; font-weight: 700; line-height: 1.16;
+  white-space: nowrap; flex-shrink: 0;
+}
 `;
 }
