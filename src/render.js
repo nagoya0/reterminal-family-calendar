@@ -91,8 +91,23 @@ ${styles()}
 </html>`;
 }
 
+/**
+ * 同梱フォントの絶対 file:// URL。
+ * 開発機(macOS)とビルド環境(GitHub Actions / Linux)で字幅が変わると、
+ * 折り返し位置とクランプ位置がずれて調整済みのレイアウトが崩れる。
+ * OS のフォントに依存せず、常にこの1ファイルだけを使う。
+ */
+const FONT_URL = new URL('../assets/fonts/NotoSansJP-Variable.ttf', import.meta.url).href;
+
 function styles() {
   return `
+@font-face {
+  font-family: "CalendarJP";
+  src: url("${FONT_URL}") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+}
+
 /* 1bit 化を前提に、グレーを一切使わず #000 / #fff のみで構成する。
    アンチエイリアスも切って、閾値処理で文字が痩せるのを防ぐ。 */
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -105,7 +120,7 @@ html, body {
 body {
   background: #fff;
   color: #000;
-  font-family: "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
+  font-family: "CalendarJP", sans-serif;
   -webkit-font-smoothing: none;
   text-rendering: optimizeSpeed;
 }
