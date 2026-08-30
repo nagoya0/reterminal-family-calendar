@@ -6,7 +6,8 @@
   "description": "実家の電子ペーパー端末に Google カレンダーを表示する",
   "scripts": {
     "preview": "node src/preview.js",
-    "shots": "node src/shots.js"
+    "shots": "node src/shots.js",
+    "check": "node src/check.js"
   },
   "dependencies": {
     "googleapis": "^176.0.0",

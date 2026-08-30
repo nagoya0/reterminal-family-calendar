@@ -14,7 +14,7 @@ const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
  * GitHub Actions では Secrets から環境変数に JSON をそのまま入れる。
  * ローカルでは既定の鍵ファイルにフォールバックする。
  */
-function loadCredentials() {
+export function loadCredentials() {
   const inline = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (inline) return JSON.parse(inline);
 

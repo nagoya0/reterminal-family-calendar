@@ -1,0 +1,33 @@
+# カレンダーの共有が成功したかを手動で確認する。
+# 実家など手元にPCが無い場所から、スマホのブラウザで実行してログを読む用途。
+name: カレンダー共有の確認
+
+on:
+  workflow_dispatch:
+    inputs:
+      calendar_id:
+        description: 'カレンダーID（分かっていれば入力。空なら見えるカレンダーの一覧だけ表示）'
+        required: false
+        default: ''
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      # 確認には puppeteer / Chromium が不要なので、
+      # install スクリプトを止めて Chromium のダウンロードを省く
+      - run: npm ci --ignore-scripts
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+
+      - name: 共有を確認
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: node src/check.js "${{ inputs.calendar_id }}"
