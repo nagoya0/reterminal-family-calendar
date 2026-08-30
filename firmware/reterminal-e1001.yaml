@@ -18,6 +18,11 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: 家族カレンダー
+  platformio_options:
+    # この個体は CH340K の USB-UART ブリッジを UART0 で使っており、
+    # macOS のドライバとの組み合わせで 460800 以上だと連続転送が壊れる。
+    # esphome の既定値は速すぎるので明示的に落とす。
+    upload_speed: 230400
   on_boot:
     priority: -100
     then:
@@ -102,4 +107,10 @@ display:
     # 描画は画像取得後に明示的に行う
     update_interval: never
     lambda: |-
-      it.image(0, 0, id(calendar_image));
+      // 描画色と背景色を入れ替えて渡す。
+      // サーバは「白地に黒文字」の人間が読める向きで PNG を出しており、
+      // 1bit パレットPNG のどちらのインデックスをインクとみなすかが
+      // ePaper ドライバ側と一致しないため、ここで吸収する。
+      // サーバ側を negate すると shots の出力や印刷用の画像まで
+      // 白黒反転してしまうので、機器の都合は表示側で引き受ける。
+      it.image(0, 0, id(calendar_image), COLOR_OFF, COLOR_ON);
