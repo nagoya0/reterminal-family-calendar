@@ -19,11 +19,20 @@ export async function screenshot(html) {
   const htmlPath = join(dir, 'page.html');
   writeFileSync(htmlPath, html);
 
+  // Ubuntu 23.10 以降は AppArmor が非特権ユーザー名前空間を制限しており、
+  // GitHub Actions の runner では Chromium の sandbox が起動できない。
+  // CI でだけ無効化する。予定名は Google 由来の外部入力なので、
+  // ローカルでは sandbox を有効なままにしておく。
+  const sandboxArgs = process.env.CI
+    ? ['--no-sandbox', '--disable-setuid-sandbox']
+    : [];
+
   const browser = await puppeteer.launch({
     args: [
       '--font-render-hinting=none',
       '--disable-lcd-text',
       '--allow-file-access-from-files',
+      ...sandboxArgs,
     ],
   });
   try {
