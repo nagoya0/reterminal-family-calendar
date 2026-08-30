@@ -3,7 +3,7 @@
 // 画像は image.js としてビルド時に生成され、このスクリプトに同梱される。
 // PNG が数KBしかないため R2 や KV を介さない。依存サービスが減る。
 // image.js は家族の予定を含むため git には入れない（.gitignore 済み）。
-import { PNG_BASE64, BUILT_AT } from './image.js';
+import { IMAGES, BUILT_AT } from './image.js';
 
 /** 端末が設置される国。ここ以外からのアクセスは受け付けない。 */
 const ALLOWED_COUNTRY = 'JP';
@@ -29,14 +29,23 @@ function bearerToken(request) {
   return match ? match[1] : '';
 }
 
-let cachedBytes = null;
+/**
+ * JST の今日の日付を "YYYY-MM-DD" で返す。
+ * JST は夏時間を持たず UTC+9 固定なので、エポックをずらして UTC 日付を読めばよい。
+ */
+function todayInJst() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
-function pngBytes() {
-  if (cachedBytes) return cachedBytes;
-  const binary = atob(PNG_BASE64);
+const cache = new Map();
+
+function pngBytes(base64) {
+  const hit = cache.get(base64);
+  if (hit) return hit;
+  const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  cachedBytes = bytes;
+  cache.set(base64, bytes);
   return bytes;
 }
 
@@ -57,13 +66,24 @@ export default {
     if (!env.ACCESS_TOKEN) return notFound;
     if (!tokenMatches(bearerToken(request), env.ACCESS_TOKEN)) return notFound;
 
-    return new Response(pngBytes(), {
+    // 前日のうちに翌日分も作ってあるので、いま何日かで選び分ける。
+    // これで端末は 0時ちょうどに取りに来ても正しい日付の画像を受け取れる。
+    const date = todayInJst();
+    const image = IMAGES[date];
+
+    // 該当する日の画像が無い場合（生成が数日止まっているなど）は返さない。
+    // 日付の違う画像を返すより、端末に前の表示を保たせる方がまし。
+    // 全画面の再描画を無駄に走らせずに済む。
+    if (!image) return notFound;
+
+    return new Response(pngBytes(image), {
       headers: {
         'Content-Type': 'image/png',
         // 端末は1日1回しか取りに来ない。古い画像を掴ませない。
         'Cache-Control': 'no-store',
         // 表示が止まったとき、いつ生成された画像かを追えるようにする
         'X-Built-At': BUILT_AT,
+        'X-Image-Date': date,
       },
     });
   },
