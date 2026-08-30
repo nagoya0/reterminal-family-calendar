@@ -12,8 +12,7 @@
 
 substitutions:
   name: family-calendar
-  # 検証中はローカルの Mac。本番ではここだけ差し替える。
-  image_url: "http://192.168.1.4:8080/calendar.png"
+  image_url: "https://family-calendar.<your-subdomain>.workers.dev/cal"
 
 esphome:
   name: ${name}
@@ -66,6 +65,30 @@ wifi:
 
 captive_portal:
 
+# ------------------------------------------------------------------
+# ここから調整用。deep_sleep を入れる段階でまとめて削除する。
+# 眠っている端末は HTTP を受けられないため両立しない。
+#
+# レイアウト調整のたびに USB を挿し直すのを避けるための仕組み。
+# Worker に新しい画像をデプロイしたあと、Mac から
+#   curl -u admin:<web_password> -X POST http://family-calendar.local/button/refresh/press
+# を叩けば、その場で取り直して描画する。
+web_server:
+  port: 80
+  # 実家のLANに無認証の操作画面を残さないよう、消し忘れへの保険を掛けておく
+  auth:
+    username: admin
+    password: !secret web_password
+
+button:
+  - platform: template
+    name: refresh
+    id: refresh_image
+    on_press:
+      - logger.log: "手動で再取得します"
+      - component.update: calendar_image
+# ------------------------------------------------------------------
+
 # online_image が画像を取りに行くための HTTP クライアント
 http_request:
   useragent: esphome/family-calendar
@@ -81,6 +104,9 @@ spi:
 online_image:
   - id: calendar_image
     url: ${image_url}
+    # トークンはヘッダで送る。クエリ文字列だと URL ごとログに残るため。
+    request_headers:
+      Authorization: !secret authorization_header
     format: PNG
     # サーバ側で1bitに落としてあるので BINARY で受ける
     type: BINARY

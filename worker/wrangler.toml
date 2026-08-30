@@ -1,0 +1,9 @@
+# 画像そのものを Worker のスクリプトに埋め込んで配信する。
+# PNG が約3KB しかないため、R2 や KV のようなストレージを介する必要がない。
+# 依存サービスが減るぶん障害点も減る。
+name = "family-calendar"
+main = "src/index.js"
+compatibility_date = "2026-08-30"
+workers_dev = true
+
+# 秘密トークンは wrangler secret put ACCESS_TOKEN で設定する（コードに置かない）

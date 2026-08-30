@@ -1,0 +1,54 @@
+# 毎朝カレンダーを取得して画像を生成し、Worker としてデプロイする。
+#
+# 画像は Worker のスクリプトに埋め込まれる。PNG が数KBしかないため、
+# R2 や KV のようなストレージを介さない。依存サービスが減るぶん障害点も減る。
+name: カレンダー画像の生成とデプロイ
+
+on:
+  schedule:
+    # UTC 20:00 = JST 05:00。端末の起床時刻より十分早くしておく。
+    # GitHub Actions の cron は数分〜数十分遅延することがあるため。
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+# 同時に走らせない。古い実行が新しい画像を上書きするのを防ぐ。
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # npm が postinstall をブロックすると Chromium が入らず puppeteer が
+      # 起動できない（このプロジェクトの開発機で実際に起きた）。
+      # 依存させず明示的に取得する。
+      - name: Chromium を取得
+        run: npx puppeteer browsers install chrome
+
+      - name: カレンダーを取得して画像を生成
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+        run: node src/build.js --no-open
+
+      - name: 生成物の確認
+        run: |
+          test -s dist/calendar.png || { echo "PNG が生成されていない"; exit 1; }
+          test -s worker/src/image.js || { echo "画像モジュールが生成されていない"; exit 1; }
+          ls -l dist/calendar.png worker/src/image.js
+
+      - name: Worker をデプロイ
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config worker/wrangler.toml

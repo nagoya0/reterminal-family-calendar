@@ -8,11 +8,15 @@
     "preview": "node src/preview.js",
     "shots": "node src/shots.js",
     "check": "node --env-file-if-exists=.env src/check.js",
-    "build": "node --env-file-if-exists=.env src/build.js"
+    "build": "node --env-file-if-exists=.env src/build.js",
+    "push": "node src/push.js"
   },
   "dependencies": {
     "googleapis": "^176.0.0",
     "puppeteer": "^25.9.0",
     "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "wrangler": "^4.127.1"
   }
 }

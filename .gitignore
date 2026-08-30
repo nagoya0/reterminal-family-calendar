@@ -9,3 +9,7 @@ dist/
 # ESPHome の秘密情報
 firmware/secrets.yaml
 firmware/.esphome/
+
+# Worker に埋め込む画像（家族の予定を含むため git に入れない）
+worker/src/image.js
+worker/.wrangler/
