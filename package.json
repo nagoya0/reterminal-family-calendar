@@ -7,7 +7,8 @@
   "scripts": {
     "preview": "node src/preview.js",
     "shots": "node src/shots.js",
-    "check": "node src/check.js"
+    "check": "node --env-file-if-exists=.env src/check.js",
+    "build": "node --env-file-if-exists=.env src/build.js"
   },
   "dependencies": {
     "googleapis": "^176.0.0",

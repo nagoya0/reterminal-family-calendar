@@ -1,0 +1,105 @@
+# reTerminal E1001 — 実家向けカレンダー表示端末
+#
+# 検証段階の構成。deep_sleep はまだ入れていない。
+# 確かめたいのは次の2点:
+#   1. online_image が Seeed の ePaper で動くか（Wiki には file: の例しかない）
+#   2. 実機で文字が読めるか
+#
+# 画像はクラウドではなく同一LAN上の Mac から取得する。
+# 配信インフラを作る前に、端末側が動くことを先に確かめるため。
+#
+# ピン配置の出典: https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome/
+
+substitutions:
+  name: family-calendar
+  # 検証中はローカルの Mac。本番ではここだけ差し替える。
+  image_url: "http://192.168.1.4:8080/calendar.png"
+
+esphome:
+  name: ${name}
+  friendly_name: 家族カレンダー
+  on_boot:
+    priority: -100
+    then:
+      # Wi-Fi が繋がるまで待ってから取りに行く
+      - wait_until:
+          condition: wifi.connected
+          timeout: 60s
+      - component.update: calendar_image
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 32MB
+  framework:
+    type: esp-idf
+    advanced:
+      # 32MB フラッシュで OTA を使うには ESP-IDF の実験的機能の有効化が要る。
+      # OTA を諦める選択肢もあるが、設置後は実家まで車で1時間以内とはいえ出向く手間が大きいため、
+      # Wi-Fi 経由で更新できる手段は残しておく。
+      enable_idf_experimental_features: true
+
+# ESP32-S3R8 は 8MB の octal PSRAM。800x480 の画像バッファ用に有効化する。
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # 2.4GHz 専用機（技適の認証範囲も 2412〜2472MHz のみ）
+  ap:
+    ssid: "${name} setup"
+    password: !secret fallback_password
+
+captive_portal:
+
+# online_image が画像を取りに行くための HTTP クライアント
+http_request:
+  useragent: esphome/family-calendar
+  timeout: 30s
+  # 本番で https を使う場合に CA を積まずに済ませるため検証を切る。
+  # 配信URLは秘密トークン付きで、内容も家族の予定であるため許容範囲と判断。
+  verify_ssl: false
+
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+
+online_image:
+  - id: calendar_image
+    url: ${image_url}
+    format: PNG
+    # サーバ側で1bitに落としてあるので BINARY で受ける
+    type: BINARY
+    resize: 800x480
+    update_interval: never
+    on_download_finished:
+      - logger.log: "画像を取得しました。描画します。"
+      - component.update: epaper
+    on_error:
+      - logger.log: "画像の取得に失敗しました。"
+
+display:
+  - platform: waveshare_epaper
+    id: epaper
+    model: 7.50inv2
+    cs_pin: GPIO10
+    dc_pin: GPIO11
+    reset_pin:
+      number: GPIO12
+      inverted: false
+    busy_pin:
+      number: GPIO13
+      inverted: true
+    # 描画は画像取得後に明示的に行う
+    update_interval: never
+    lambda: |-
+      it.image(0, 0, id(calendar_image));

@@ -5,3 +5,7 @@ dist/
 *sa-key.json
 *client_secret*.json
 .env
+
+# ESPHome の秘密情報
+firmware/secrets.yaml
+firmware/.esphome/
