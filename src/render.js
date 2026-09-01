@@ -83,7 +83,7 @@ function renderToday(events, todayKey, weather) {
   return `
     <div class="left">
       <header class="head">
-        <span class="md">${d.month}月${d.day}日(${d.weekday})</span>
+        <span class="md">${d.month}月${d.day}日<span class="dow">(${d.weekday})</span></span>
         ${temps}
       </header>
       <div class="mine">${body}
@@ -184,6 +184,9 @@ body {
   display: flex; align-items: baseline; gap: 12px;
 }
 .md   { font-size: 44px; font-weight: 700; white-space: nowrap; }
+/* 曜日は日付より一段落として気温と同じ大きさに揃える。
+   日付が主で、曜日と気温は補助という関係を字の大きさで示す。 */
+.dow  { font-size: 28px; font-weight: 700; margin-left: 2px; }
 .temp { font-size: 28px; font-weight: 700; margin-left: auto; white-space: nowrap; }
 
 .mine { flex: 1; min-height: 0; padding: 0 18px; overflow: hidden; }
