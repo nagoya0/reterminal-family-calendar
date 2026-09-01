@@ -27,6 +27,26 @@ esphome:
     then:
       - lambda: |-
           ESP_LOGI("wake", "起床要因: %d", (int) esp_sleep_get_wakeup_cause());
+
+      # 緑ボタンで起きたときだけ鳴らす。通常の 00:00 起床では鳴らさない
+      # （夜中に音を立てない。誰も聞いていないので意味も無い）。
+      #
+      # **Wi-Fi より前に鳴らすことに意味がある。** ここで鳴れば「電源が入って
+      # いて起動した」ことがネットワークと無関係に確定する。電話で
+      # 「押したらピピッと鳴った?」と聞けば、無反応の原因が端末側か回線側かを
+      # 切り分けられる。画面のチカチカだけだと、Wi-Fi が落ちているときも
+      # 電池切れのときも同じ「無反応」になって区別がつかない。
+      #
+      - if:
+          condition:
+            lambda: 'return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;'
+          then:
+            - logger.log: "緑ボタンでの起床。ブザーを鳴らします"
+            # duty 50% が矩形波として最も音が大きい
+            - output.set_level: { id: buzzer, level: 50% }
+            - delay: 80ms
+            - output.turn_off: buzzer
+
       # Wi-Fi が繋がるまで待ってから取りに行く
       - wait_until:
           condition: wifi.connected
@@ -242,6 +262,17 @@ http_request:
   # 本番で https を使う場合に CA を積まずに済ませるため検証を切る。
   # 配信URLは秘密トークン付きで、内容も家族の予定であるため許容範囲と判断。
   verify_ssl: false
+
+# 本体のブザー（パッシブ型なので PWM で駆動する）。
+#
+# 周波数が音程になる。圧電ブザーは 2〜4kHz が最も大きく鳴るが、母の耳は
+# 遠くないとのことなので効率を追う必要は無く、Seeed の作例と同じ 1000Hz にする。
+# 実機で小さすぎるようなら周波数を上げると大きくなる。
+output:
+  - platform: ledc
+    pin: GPIO45
+    id: buzzer
+    frequency: 1000Hz
 
 spi:
   clk_pin: GPIO7
