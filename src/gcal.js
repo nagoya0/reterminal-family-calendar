@@ -43,15 +43,17 @@ function normalize(item) {
   };
 }
 
-/**
- * 今日から days 日分の予定を取得する。
- * singleEvents:true で繰り返し予定を個々の回に展開させる（毎週のデイサービス等）。
- */
+/** 今日から days 日分の予定を取得する */
 export async function fetchEvents(calendarId, { now = new Date(), days = 7 } = {}) {
   const today = ymd(now);
-  const timeMin = startOfDay(today);
-  const timeMax = startOfDay(addDays(today, days));
+  return fetchRange(calendarId, startOfDay(today), startOfDay(addDays(today, days)));
+}
 
+/**
+ * 任意の期間の予定を取得する。
+ * singleEvents:true で繰り返し予定を個々の回に展開させる（毎週のデイサービス等）。
+ */
+export async function fetchRange(calendarId, timeMin, timeMax) {
   const cal = calendarClient();
   const items = [];
   let pageToken;

@@ -9,50 +9,59 @@ export const WIDTH = 800;
 export const HEIGHT = 480;
 
 /**
- * HTML文字列を撮影してカラーPNG(Buffer)を返す。
+ * 複数の HTML をまとめて撮影し、カラーPNG(Buffer)の配列を返す。
+ *
+ * ブラウザの起動は1回だけにする。1枚ごとに起動していると、生成する
+ * 日数やシナリオ数に比例して起動コストが積み上がる。
  *
  * setContent ではなく一時ファイルへ書いて file:// で開く。
  * about:blank のままだと同梱フォントの file:// URL を読めないため。
  */
-export async function screenshot(html) {
+export async function screenshotAll(htmls) {
   const dir = mkdtempSync(join(tmpdir(), 'famcal-'));
-  const htmlPath = join(dir, 'page.html');
-  writeFileSync(htmlPath, html);
-
-  // Ubuntu 23.10 以降は AppArmor が非特権ユーザー名前空間を制限しており、
-  // GitHub Actions の runner では Chromium の sandbox が起動できない。
-  // CI でだけ無効化する。予定名は Google 由来の外部入力なので、
-  // ローカルでは sandbox を有効なままにしておく。
-  const sandboxArgs = process.env.CI
-    ? ['--no-sandbox', '--disable-setuid-sandbox']
-    : [];
-
   const browser = await puppeteer.launch({
     args: [
       '--font-render-hinting=none',
       '--disable-lcd-text',
       '--allow-file-access-from-files',
-      ...sandboxArgs,
+      // Ubuntu 23.10 以降は AppArmor が非特権ユーザー名前空間を制限しており、
+      // GitHub Actions の runner では Chromium の sandbox が起動できない。
+      // CI でだけ無効化する。予定名は Google 由来の外部入力なので、
+      // ローカルでは sandbox を有効なままにしておく。
+      ...(process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
     ],
   });
+
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 });
-    await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
-    await page.evaluateHandle('document.fonts.ready');
 
-    // フォントが実際に読めたかを確認する。読めていなければ既定フォントに
-    // フォールバックして字幅が変わり、レイアウトが静かに崩れる。
-    const loaded = await page.evaluate(
-      () => document.fonts.check('700 34px "CalendarJP"'),
-    );
-    if (!loaded) throw new Error('同梱フォント CalendarJP を読み込めませんでした');
+    const shots = [];
+    for (const [i, html] of htmls.entries()) {
+      const htmlPath = join(dir, `page-${i}.html`);
+      writeFileSync(htmlPath, html);
+      await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
+      await page.evaluateHandle('document.fonts.ready');
 
-    return await page.screenshot({ type: 'png', fullPage: false });
+      // フォントが実際に読めたかを確認する。読めていなければ既定フォントに
+      // フォールバックして字幅が変わり、レイアウトが静かに崩れる。
+      const loaded = await page.evaluate(
+        () => document.fonts.check('700 34px "CalendarJP"'),
+      );
+      if (!loaded) throw new Error('同梱フォント CalendarJP を読み込めませんでした');
+
+      shots.push(await page.screenshot({ type: 'png', fullPage: false }));
+    }
+    return shots;
   } finally {
     await browser.close();
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** 1枚だけ撮る場合の入口 */
+export async function screenshot(html) {
+  return (await screenshotAll([html]))[0];
 }
 
 /**

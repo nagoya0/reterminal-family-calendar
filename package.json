@@ -9,7 +9,8 @@
     "shots": "node src/shots.js",
     "check": "node --env-file-if-exists=.env src/check.js",
     "build": "node --env-file-if-exists=.env src/build.js",
-    "push": "node src/push.js"
+    "push": "node src/push.js",
+    "analyze": "node --env-file-if-exists=.env src/analyze.js"
   },
   "dependencies": {
     "googleapis": "^176.0.0",

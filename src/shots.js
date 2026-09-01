@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import sharp from 'sharp';
 import { renderHtml } from './render.js';
-import { screenshot, toMonochrome } from './shoot.js';
+import { screenshotAll, toMonochrome } from './shoot.js';
 import { scenarios } from './scenarios.js';
 
 const OUT = 'dist';
@@ -34,8 +34,13 @@ async function measure(png) {
 mkdirSync(OUT, { recursive: true });
 const written = [];
 
-for (const s of scenarios) {
-  const png = await toMonochrome(await screenshot(renderHtml(s.build(s.now), s.now)));
+// 全シナリオの HTML をまとめて撮る。ブラウザの起動は1回で済む。
+const allShots = await screenshotAll(
+  scenarios.map((s) => renderHtml(s.build(s.now), s.now)),
+);
+
+for (const [i, s] of scenarios.entries()) {
+  const png = await toMonochrome(allShots[i]);
   const path = `${OUT}/${s.name}.png`;
   writeFileSync(path, png);
   const m = await measure(png);

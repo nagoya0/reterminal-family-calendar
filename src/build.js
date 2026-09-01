@@ -11,14 +11,21 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fetchEvents } from './gcal.js';
 import { renderHtml } from './render.js';
-import { screenshot, toMonochrome } from './shoot.js';
+import { screenshotAll, toMonochrome } from './shoot.js';
 import { ymd, addDays, describeDay, startOfDay } from './datetime.js';
 import { eventsForDay, timeLabel } from './events.js';
 
 const OUT = 'dist';
 
-/** 作る日数。今日と明日。 */
-const DAYS_AHEAD = 2;
+/**
+ * 何日分の画像を作るか。DAYS_AHEAD 環境変数で変えられる。
+ *
+ * 端末は「今日の画像」を取りに来るので、最低でも1日分あればよい。
+ * 多めに作るのは GitHub Actions の cron が遅延・破棄されうるため。
+ * 3日分あれば、丸一日ぶんの実行が失われても前日以前の生成分で当日の
+ * 画像が存在する。1枚あたり3KB 程度なので増やす負担は小さい。
+ */
+const DAYS_AHEAD = Number(process.env.DAYS_AHEAD) || 3;
 
 const calendarId = process.env.CALENDAR_ID ?? process.argv[2];
 if (!calendarId) {
@@ -45,19 +52,26 @@ for (let i = 0; i < 7 + DAYS_AHEAD - 1; i++) {
 }
 
 mkdirSync(OUT, { recursive: true });
-const images = {};
 
-for (let i = 0; i < DAYS_AHEAD; i++) {
-  const key = addDays(today, i);
+// 各日の HTML をまとめて作ってから一括で撮る。ブラウザの起動は1回で済む。
+const keys = Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
+const htmls = keys.map((key) =>
   // その日の朝を基準に描く。時刻そのものは表示に使っていないが、
   // 「今日」「明日」の判定に使われる。
-  const base = new Date(startOfDay(key).getTime() + 6 * 3600 * 1000);
-  const png = await toMonochrome(await screenshot(renderHtml(events, base)));
+  renderHtml(events, new Date(startOfDay(key).getTime() + 6 * 3600 * 1000)),
+);
+
+const shots = await screenshotAll(htmls);
+const images = {};
+
+console.log('');
+for (const [i, key] of keys.entries()) {
+  const png = await toMonochrome(shots[i]);
   images[key] = png.toString('base64');
 
   // 今日の分だけは従来どおり dist に置く（実物大印刷や目視確認に使う）
   if (i === 0) writeFileSync(`${OUT}/calendar.png`, png);
-  console.log(`\n${key} の画像: ${png.length} bytes`);
+  console.log(`  ${key} の画像: ${png.length} bytes`);
 }
 
 // Worker に埋め込むモジュール。どの日の画像かをキーに持たせ、
