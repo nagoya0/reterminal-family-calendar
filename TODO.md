@@ -34,16 +34,38 @@ api は Home Assistant のためではなく `esphome logs` を Wi-Fi 経由で�
 | ←（白） | GPIO4 | Button Left | ログ出力のみ |
 | →（白） | GPIO5 | Button Right | ログ出力のみ |
 
-**緑（GPIO3）を deep_sleep からの起床ピンにする。** 押したら更新、は既に動いて
-いるので、あとは眠りから起こせるかだけ。白い2つは用途が定まらないうちは
-割り当てない（誤操作の原因になるだけ）。
+**GPIO3 が wakeup_pin に使えることを実機で確認済み（2026-09-02）。**
+懸案だった strapping ピンの件は杞憂だった。Seeed の作例が GPIO4 を使っているので
+警戒していたが、GPIO3 でも問題なく起きる。押す → 起床 → 画像取得 → 描画まで通った。
 
-**GPIO3 が wakeup_pin に使えるかは実機で確認すること。** ESP32-S3 の deep sleep
-からの復帰は RTC ドメインの GPIO(0〜21) に限られる。GPIO3 は範囲内だが、
-Seeed の作例が GPIO4 を使っているのが気になる。**駄目なら GPIO4（←）に
-逃がせばよい**（後述のとおり母には刻印の意味を伝えないので、刻印と挙動が
-食い違っても実害が無い）。電話で「緑のボタン」と言えるのが楽なので第一候補では
-ある、という程度の差。
+検証時の構成（`sleep_duration` は安全装置。GPIO で起きられなくても必ず復帰し、
+その間に OTA で書き直せる。これが無いと USB を挿すしかなくなる）:
+
+```yaml
+deep_sleep:
+  run_duration: 120s      # OTA を投げる猶予。本番では描画後すぐ眠らせる
+  sleep_duration: 15min   # 安全装置
+  wakeup_pin:
+    number: GPIO3
+    mode: INPUT_PULLUP
+    inverted: true
+    allow_other_uses: true
+  wakeup_pin_mode: IGNORE   # 眠る瞬間に押されていても眠れるように
+```
+
+**`allow_other_uses: true` が両方（binary_sensor 側と wakeup_pin 側）に要る。**
+無いと `Pin 3 is used in multiple places` で設定が通らない。同じ GPIO3 を
+「眠りから起こす」と「起きている間の再取得」の両方に使うため。
+
+白い2つは用途が定まらないうちは割り当てない（誤操作の原因になるだけ）。
+
+### 起床要因をログに出す小技
+
+`esp_sleep_get_wakeup_cause()` の値（0=電源投入/リセット 2=GPIO 4=タイマー）を
+出すと切り分けが早い。ただし **`on_boot` に置いても読めない**。`esphome logs` が
+繋がる前に流れてしまうため。`api:` の `on_client_connected` も接続の瞬間に発火し、
+クライアントがログ購読を登録する前なのでやはり間に合わない。**`delay: 3s` を
+挟んで初めて読める。**
 
 ### 🔄 ボタンは母には伝えない（2026-09-02 決定）
 

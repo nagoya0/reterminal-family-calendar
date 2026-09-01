@@ -26,6 +26,9 @@ esphome:
     priority: -100
     then:
       # Wi-Fi が繋がるまで待ってから取りに行く
+      # 何で起きたかを残す。0=電源投入/リセット 2=GPIO 4=タイマー
+      - lambda: |-
+          ESP_LOGI("wake", "起床要因: %d", (int) esp_sleep_get_wakeup_cause());
       - wait_until:
           condition: wifi.connected
           timeout: 60s
@@ -75,6 +78,14 @@ captive_portal:
 api:
   encryption:
     key: !secret api_encryption_key
+  # on_boot のログは esphome logs が繋がる前に流れてしまい読めない。
+  # on_client_connected も接続の瞬間に発火するため、クライアントがログの購読を
+  # 登録し終える前で、やはり間に合わなかった。少し待ってから出す。
+  on_client_connected:
+    - delay: 3s
+    - lambda: |-
+        ESP_LOGI("wake", "起床要因: %d  (0=電源投入/リセット 2=GPIO 4=タイマー)",
+                 (int) esp_sleep_get_wakeup_cause());
 
 # レイアウト調整のたびに USB を挿し直すのを避けるための仕組み。
 # Worker に新しい画像をデプロイしたあと、Mac から
@@ -111,7 +122,8 @@ binary_sensor:
   - platform: gpio
     name: "Button Green"
     id: btn_green
-    pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true }
+    # deep_sleep の wakeup_pin と同じピンを共有するので明示的に許可する
+    pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
       - logger.log: "緑ボタンが押されました → 画像を再取得します"
       - component.update: calendar_image
@@ -128,6 +140,26 @@ binary_sensor:
     on_press:
       - logger.log: "→ボタンが押されました"
 # ------------------------------------------------------------------
+# GPIO3 が deep sleep の起床ピンに使えるかを確かめるための暫定ブロック。
+# 検証が済んだら本番の構成（JST 00:00 起床）に書き換える。
+#
+# sleep_duration を併記しているのは安全装置。GPIO3 で起きられなかった場合でも
+# 15分後にタイマーで必ず起きるので、その間に OTA で書き直せる。
+# これが無いと「起こす手段が無い」状態になり USB を挿すしかなくなる。
+#
+# run_duration は起床後に起きたままでいる時間。OTA を投げる猶予を取っている。
+# 本番ではもっと短くする（描画が終わったら即座に眠らせる）。
+deep_sleep:
+  id: sleeper
+  run_duration: 120s
+  sleep_duration: 15min
+  wakeup_pin:
+    number: GPIO3
+    mode: INPUT_PULLUP
+    inverted: true
+    allow_other_uses: true
+  # 眠らせる瞬間にボタンが押されていると眠れなくなるため無視させる
+  wakeup_pin_mode: IGNORE
 
 # online_image が画像を取りに行くための HTTP クライアント
 http_request:
