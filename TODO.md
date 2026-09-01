@@ -11,8 +11,35 @@
 0時に取りに来ても間に合う。Worker が JST の日付で出し分ける。
 
 **固定時間のスリープだと時計がずれていく。** 数ヶ月で起床時刻が大きく動く
-可能性がある。起床のたびに SNTP で時刻を取り直し、次の 00:00 までの秒数を
-計算して眠る構成にすれば、毎回ずれが補正される。
+可能性がある。ただし**自分で秒数を計算する必要は無い**。`deep_sleep.enter` の
+`until:` が標準でこれをやる（`deep_sleep_component.h:185-219`）。
+
+```yaml
+- deep_sleep.enter:
+    id: sleeper
+    until: '00:00:00'
+    time_id: jst        # sntp の time コンポーネント
+```
+
+SNTP 同期済みの実時刻から目標時刻までの差分を毎回計算し直し、既に過ぎていれば
++24時間する。起床のたびに再計算されるのでずれが蓄積しない。
+
+**ただし SNTP 未同期のまま実行すると 1970年 を基準に計算して出鱈目な時間眠る。**
+時刻の有効性を確認してから眠り、取れなければ1時間後に起きてやり直すガードが要る:
+
+```yaml
+- wait_until:
+    condition:
+      lambda: 'return id(jst).now().is_valid();'
+    timeout: 60s
+- if:
+    condition:
+      lambda: 'return id(jst).now().is_valid();'
+    then:
+      - deep_sleep.enter: { id: sleeper, until: '00:00:00', time_id: jst }
+    else:
+      - deep_sleep.enter: { id: sleeper, sleep_duration: 1h }
+```
 
 同時に **web_server・refresh ボタン・api を外す**。眠っている端末は接続を
 受けられず両立しないため。消し忘れると実家のLANに操作画面が残る
@@ -37,6 +64,9 @@ api は Home Assistant のためではなく `esphome logs` を Wi-Fi 経由で�
 **GPIO3 が wakeup_pin に使えることを実機で確認済み（2026-09-02）。**
 懸案だった strapping ピンの件は杞憂だった。Seeed の作例が GPIO4 を使っているので
 警戒していたが、GPIO3 でも問題なく起きる。押す → 起床 → 画像取得 → 描画まで通った。
+
+`esp_sleep_get_wakeup_cause()` が `2`（= `ESP_SLEEP_WAKEUP_EXT0`）を返すことで
+数値でも裏付けた。タイマー起床なら `4` になる。
 
 検証時の構成（`sleep_duration` は安全装置。GPIO で起きられなくても必ず復帰し、
 その間に OTA で書き直せる。これが無いと USB を挿すしかなくなる）:
