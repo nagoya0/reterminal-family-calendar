@@ -83,6 +83,18 @@ script:
           then:
             - logger.log: "保守モード: 2分間起きたままにします"
             - delay: 2min
+      # OTA のロールバック対策。
+      #
+      # ESP-IDF は CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y で動いており、OTA 直後の
+      # ファームは「未確認」状態にある。ESPHome は safe_mode が起動から60秒後に
+      # esp_ota_mark_app_valid_cancel_rollback() を呼んで確定させるが、この端末は
+      # 通常30秒未満で眠るのでその時刻に到達しない。結果、次の起動でブートローダが
+      # 前のファームに巻き戻す。OTA は「成功」と出るのに更新が入らない。
+      #
+      # ここまで到達したこと自体が「起動から就寝判断まで一通り走った」証拠なので、
+      # 確定の条件として十分。途中でクラッシュすればここには来ず、巻き戻しが効く。
+      - lambda: 'esp_ota_mark_app_valid_cancel_rollback();'
+
       # SNTP が同期していないと now() は1970年を返し、until: が出鱈目な秒数を
       # 算出してしまう。数ヶ月眠り込みかねないので必ず有効性を確かめる。
       - wait_until:
@@ -171,9 +183,11 @@ binary_sensor:
     id: btn_green
     # deep_sleep の wakeup_pin と同じピンを共有するので明示的に許可する
     pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    # 取得は on_boot が行うので、ここで component.update は呼ばない。
+    # 呼ぶと連打のたびに再取得と全画面リフレッシュ（約6秒）が走り、電池を無駄に
+    # 使う。押して起こす → on_boot が取りに行く、で用は足りている。
     on_press:
-      - logger.log: "緑ボタンが押されました → 画像を再取得します"
-      - component.update: calendar_image
+      - logger.log: "緑ボタンが押されました"
   - platform: gpio
     name: "Button Left"
     id: btn_left
