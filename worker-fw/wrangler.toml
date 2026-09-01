@@ -1,0 +1,21 @@
+# ファームウェア配信専用の Worker。画像側とは意図的に分けてある（src/index.js の冒頭参照）。
+#
+# **毎日の画像デプロイはこの Worker に触れない。** ファームウェアを更新したいときだけ
+# 手元から deploy する。GitHub Actions は worker/ の方だけを対象にしている。
+name = "family-calendar-fw"
+main = "src/index.js"
+compatibility_date = "2026-08-30"
+workers_dev = true
+# 版ごとのプレビュー URL を作らせない。認証は効くが、到達できるホスト名を
+# 無用に増やす理由がない。
+preview_urls = false
+
+# バイナリは静的アセットとして置く。直接は公開せず、認証を通してから
+# Worker が env.ASSETS 経由で読み出す。
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+# 認証情報は wrangler secret put FW_USER / FW_PASSWORD で設定する（コードに置かない）。
+# 配信中のバイナリのビルド時刻と MD5 は deploy のたびに変わるので、
+# npm run push-firmware が --var で渡す。

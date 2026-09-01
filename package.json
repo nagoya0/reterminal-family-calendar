@@ -10,7 +10,8 @@
     "check": "node --env-file-if-exists=.env src/check.js",
     "build": "node --env-file-if-exists=.env src/build.js",
     "push": "node src/push.js",
-    "analyze": "node --env-file-if-exists=.env src/analyze.js"
+    "analyze": "node --env-file-if-exists=.env src/analyze.js",
+    "push-firmware": "node src/push-firmware.js"
   },
   "dependencies": {
     "googleapis": "^176.0.0",

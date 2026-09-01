@@ -13,6 +13,7 @@
 substitutions:
   name: family-calendar
   image_url: "https://family-calendar.<your-subdomain>.workers.dev/cal"
+  fw_base: "https://family-calendar-fw.<your-subdomain>.workers.dev"
 
 esphome:
   name: ${name}
@@ -33,7 +34,7 @@ esphome:
       #
       # **Wi-Fi より前に鳴らすことに意味がある。** ここで鳴れば「電源が入って
       # いて起動した」ことがネットワークと無関係に確定する。電話で
-      # 「押したらピピッと鳴った?」と聞けば、無反応の原因が端末側か回線側かを
+      # 「押したらピッと鳴った?」と聞けば、無反応の原因が端末側か回線側かを
       # 切り分けられる。画面のチカチカだけだと、Wi-Fi が落ちているときも
       # 電池切れのときも同じ「無反応」になって区別がつかない。
       #
@@ -51,6 +52,21 @@ esphome:
       - wait_until:
           condition: wifi.connected
           timeout: 60s
+
+      # ------------------------------------------------------------------
+      # ファームウェアの確認は**画像取得より先に**行う。
+      #
+      # 回復手段が回復対象に依存してはいけないため。トークンを交換したり画像の
+      # URL を変えたりした場合、古いファームは画像を取得できない。
+      # 「画像取得 → 失敗で就寝」という順序だとここに到達せず、端末が永久に
+      # 更新を受け付けなくなる。実家まで USB を持って行く以外に手がなくなる。
+      - script.execute: check_firmware
+      - wait_until:
+          condition:
+            lambda: 'return !id(check_firmware).is_running();'
+          timeout: 30s
+      # ------------------------------------------------------------------
+
       # component.update は非同期。ここで眠らせると取得・描画の前に落ちるので、
       # 眠る判断は online_image の on_download_finished / on_error から呼ぶ。
       - component.update: calendar_image
@@ -76,8 +92,12 @@ logger:
   level: DEBUG
 
 ota:
+  # 同一LAN 用。自宅で開発している間はこちらが速い。
   - platform: esphome
     password: !secret ota_password
+  # 端末側から取りに行く方式。実家に設置したあとはこちらしか届かない。
+  - platform: http_request
+    id: fw_ota
 
 wifi:
   ssid: !secret wifi_ssid
@@ -92,6 +112,64 @@ captive_portal:
 # 描画が終わったあとの締めくくり。取得の成否どちらからも呼ぶ。
 # mode: single なので二重に呼ばれても1回しか走らない。
 script:
+  # 配信中のビルド時刻を見て、自分と違えば書き込む。
+  #
+  # 判定にビルド時刻を使うのは、ESPHome がそれをバイナリに焼き込んでおり
+  # **端末が自分の値を知っている**から。MD5 を焼き込もうとすると、焼き込んだ
+  # 時点で MD5 が変わるので循環して成立しない。書き込み後の新しいファームは
+  # 配信中の値と一致するため、二度目以降は何もしない。
+  #
+  # 通常時は数十バイトの GET が1回増えるだけで、起床時間は1〜2秒伸びる。
+  # 画像と同じ経路に相乗りさせればこれは省けるが、画像側が壊れたときに
+  # 更新も届かなくなるので分けている。
+  - id: check_firmware
+    mode: single
+    then:
+      - logger.log: "配信中のファームウェアを確認します"
+      - http_request.get:
+          url: ${fw_base}/fw.version
+          request_headers:
+            Authorization: !secret fw_authorization_header
+          capture_response: true
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code != 200) {
+                    ESP_LOGW("fw", "確認できませんでした (HTTP %d)", response->status_code);
+                    return;
+                  }
+                  char mine[App.BUILD_TIME_STR_SIZE];
+                  App.get_build_time_string(mine);
+                  std::string theirs = body;
+                  // 末尾の改行や空白を落としてから比べる
+                  while (!theirs.empty() && (theirs.back() == '\n' || theirs.back() == '\r' ||
+                                             theirs.back() == ' ')) {
+                    theirs.pop_back();
+                  }
+                  if (theirs == mine) {
+                    ESP_LOGI("fw", "最新です (%s)", mine);
+                    return;
+                  }
+                  ESP_LOGI("fw", "更新があります: %s -> %s", mine, theirs.c_str());
+                  id(fw_update_needed) = true;
+          on_error:
+            then:
+              # 確認できなくても画面は出す。ここで止める方が害が大きい。
+              - logger.log: "ファームウェアの確認に失敗しました。今回は見送ります"
+      - if:
+          condition:
+            lambda: 'return id(fw_update_needed);'
+          then:
+            - logger.log: "書き込みます。完了すると再起動します"
+            - ota.http_request.flash:
+                id: fw_ota
+                url: ${fw_base}/fw.bin
+                md5_url: ${fw_base}/fw.md5
+                username: !secret fw_user
+                password: !secret fw_password
+            # 成功していれば再起動しているので、ここに来たのは失敗したとき。
+            - logger.log: "書き込みに失敗しました。次の起床でやり直します"
+
   - id: finish
     mode: single
     then:
@@ -136,6 +214,13 @@ script:
             - deep_sleep.enter:
                 id: sleeper
                 sleep_duration: 1h
+
+globals:
+  - id: fw_update_needed
+    type: bool
+    # 起床のたびに判定し直すので NVS に残す必要はない。
+    restore_value: no
+    initial_value: 'false'
 
 # until: で次の 00:00 までの秒数を計算するのに使う。
 # 起床のたびに同期し直すので、固定時間スリープのようなずれの蓄積が起きない。

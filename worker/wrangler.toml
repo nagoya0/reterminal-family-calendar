@@ -5,5 +5,8 @@ name = "family-calendar"
 main = "src/index.js"
 compatibility_date = "2026-08-30"
 workers_dev = true
+# 版ごとのプレビュー URL を作らせない。認証は効くが、到達できるホスト名を
+# 無用に増やす理由がない。
+preview_urls = false
 
 # 秘密トークンは wrangler secret put ACCESS_TOKEN で設定する（コードに置かない）
