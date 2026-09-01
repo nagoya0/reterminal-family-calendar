@@ -10,6 +10,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fetchEvents } from './gcal.js';
+import { fetchForecast } from './weather.js';
 import { renderHtml } from './render.js';
 import { screenshotAll, toMonochrome } from './shoot.js';
 import { ymd, addDays, describeDay, startOfDay } from './datetime.js';
@@ -27,6 +28,9 @@ const OUT = 'dist';
  */
 const DAYS_AHEAD = Number(process.env.DAYS_AHEAD) || 3;
 
+/** 右列「今後の予定」が何日先まで見るか。render.js の UPCOMING_DAYS に合わせる。 */
+const UPCOMING_SPAN = 30;
+
 const calendarId = process.env.CALENDAR_ID ?? process.argv[2];
 if (!calendarId) {
   console.error('CALENDAR_ID が未設定です（.env か引数で渡してください）');
@@ -36,12 +40,19 @@ if (!calendarId) {
 const now = new Date();
 const today = ymd(now);
 
-// 明日の画像にも「明後日から6日後」の帯が要るので、1日分多く取る
-const events = await fetchEvents(calendarId, { now, days: 7 + DAYS_AHEAD - 1 });
+// 先の日付の画像も同じ範囲の予定を見るので、その分多く取る。
+// 天気の取得に失敗しても予定だけは出す。表示が丸ごと止まる方が損失が大きい。
+const [events, forecast] = await Promise.all([
+  fetchEvents(calendarId, { now, days: UPCOMING_SPAN + DAYS_AHEAD }),
+  fetchForecast({ days: DAYS_AHEAD }).catch((e) => {
+    console.warn(`天気の取得に失敗しました: ${e.message}`);
+    return [];
+  }),
+]);
 
 // 取得内容をログに残す。画像だけでは何を描いたか後から追えないため。
 console.log(`取得: ${events.length} 件 (${calendarId})`);
-for (let i = 0; i < 7 + DAYS_AHEAD - 1; i++) {
+for (let i = 0; i < 8; i++) {
   const key = addDays(today, i);
   const d = describeDay(key);
   const day = eventsForDay(events, key);
@@ -58,7 +69,11 @@ const keys = Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
 const htmls = keys.map((key) =>
   // その日の朝を基準に描く。時刻そのものは表示に使っていないが、
   // 「今日」「明日」の判定に使われる。
-  renderHtml(events, new Date(startOfDay(key).getTime() + 6 * 3600 * 1000)),
+  renderHtml(
+    events,
+    new Date(startOfDay(key).getTime() + 6 * 3600 * 1000),
+    forecast.find((f) => f.date === key) ?? null,
+  ),
 );
 
 const shots = await screenshotAll(htmls);

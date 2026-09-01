@@ -36,7 +36,7 @@ const written = [];
 
 // 全シナリオの HTML をまとめて撮る。ブラウザの起動は1回で済む。
 const allShots = await screenshotAll(
-  scenarios.map((s) => renderHtml(s.build(s.now), s.now)),
+  scenarios.map((s) => renderHtml(s.build(s.now), s.now, s.weather ?? null)),
 );
 
 for (const [i, s] of scenarios.entries()) {

@@ -2,6 +2,7 @@
 // レイアウトを変えたら必ず全パターンを描き直して、崩れがないか目視する。
 import { startOfDay, addDays, ymd } from './datetime.js';
 import { fixtureEvents } from './fixture.js';
+import { BANDS } from './weather.js';
 
 /** シナリオ内で予定を組み立てるためのヘルパ */
 function helpers(now) {
@@ -21,123 +22,105 @@ function helpers(now) {
   };
 }
 
+/**
+ * 天気のダミー。実際の取得を伴わずにレイアウトを確認するため。
+ * pops は [朝, 昼, 夜]、icons は同じ並びのアイコン名。
+ */
+function weather(tempMax, tempMin, pops, icons) {
+  return {
+    date: null,
+    tempMax, tempMin,
+    slots: BANDS.map((b, i) => ({
+      ...b, span: b.hours, code: null, pop: pops[i], icon: icons[i], temp: tempMax,
+    })),
+  };
+}
+
+const SUNNY = weather(31, 24, [8, 12, 5], ['wi-day-sunny', 'wi-day-sunny', 'wi-night-clear']);
+const RAINY = weather(22, 19, [76, 88, 62], ['wi-showers', 'wi-rain', 'wi-showers']);
+const COLD  = weather(4, -2, [20, 30, 70], ['wi-cloudy', 'wi-cloudy', 'wi-snow']);
+
 export const scenarios = [
   {
-    name: 'normal',
-    label: '通常時（今日3件・明日2件）',
-    now: new Date('2026-08-29T05:00:00+09:00'),
-    build: (now) => fixtureEvents(now),
-  },
-  {
-    name: 'busy',
-    label: '混雑時（今日8件・明日7件、帯は2行折り返し）',
-    now: new Date('2026-08-29T05:00:00+09:00'),
+    name: 'typical',
+    label: '実測に近い密度（今日1件、先に数件）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: SUNNY,
     build(now) {
       const h = helpers(now);
       return [
-        h.allDay(0, 'ゴミ（もえる）'),
-        h.ev(0, 8, 30, '朝の散歩'),
-        h.ev(0, 10, 0, '内科 定期けんしん'),
-        h.ev(0, 12, 0, '昼食会（公民館）'),
-        h.ev(0, 14, 0, '美容院'),
-        h.ev(0, 16, 0, 'たかしが来る'),
-        h.ev(0, 19, 0, '町内会の役員会'),
-        h.ev(0, 20, 30, '孫とビデオ通話'),
-        h.allDay(1, 'デイサービス'),
-        h.ev(1, 9, 0, 'リハビリ'),
-        h.ev(1, 11, 0, '買い物'),
-        h.ev(1, 13, 30, '訪問看護'),
-        h.ev(1, 15, 0, '孫の運動会'),
-        h.ev(1, 18, 0, '夕食は外で'),
-        h.ev(1, 20, 0, '薬の受け取り'),
-        h.ev(2, 10, 0, '市民病院で検査（朝食抜き）'),
-        h.ev(3, 14, 0, '床屋'),
-        h.allDay(4, '敬老会の打ち合わせ'),
-        h.ev(5, 9, 0, '整形外科'),
-        h.ev(6, 10, 0, '地域包括支援センター相談'),
-      ];
-    },
-  },
-  {
-    name: 'newyear',
-    label: '年またぎ（12/31→1/1、日をまたぐ予定、明日は予定なし）',
-    now: new Date('2026-12-31T05:00:00+09:00'),
-    build(now) {
-      const h = helpers(now);
-      return [
-        h.allDay(0, '大晦日'),
-        h.ev(0, 9, 0, 'おせちの受け取り（駅前のスーパー）'),
-        h.ev(0, 11, 0, '床屋'),
-        h.ev(0, 14, 0, 'たかしと孫が到着'),
-        h.ev(0, 18, 0, '年越しそば'),
-        // 23:00 開始・翌 01:00 終了。翌日側では「〜01:00」と出るのが正
-        { allDay: false, startsAt: h.at(0, 23), endsAt: h.at(1, 1), title: '初詣（日付をまたぐ予定）' },
-        h.ev(2, 10, 0, '親戚があいさつに来る'),
-        h.ev(2, 15, 0, '買い物'),
-        h.allDay(4, '病院はじめ'),
-      ];
-    },
-  },
-  {
-    name: 'long',
-    label: '長い予定名と、帯に複数件（省略表示の確認用）',
-    now: new Date('2026-08-29T05:00:00+09:00'),
-    build(now) {
-      const h = helpers(now);
-      return [
-        // きょう: 2件（通常サイズ 34px・2行クランプ）
-        h.ev(0, 9, 0, '市立総合医療センター 循環器内科 定期受診（紹介状と保険証を持参）'),
-        h.ev(0, 14, 0, '地域包括支援センターの担当者と介護保険の更新について面談'),
-        // あした: 5件（混雑サイズ 27px・1行クランプ）
-        h.ev(1, 8, 0, '朝いちで薬局へ処方箋を出しに行く'),
-        h.ev(1, 10, 0, 'デイサービスの送迎車が来る（玄関前で待つこと）'),
-        h.ev(1, 13, 0, '床屋'),
-        h.ev(1, 15, 0, '孫の小学校の運動会を見に行く予定'),
-        h.ev(1, 18, 0, '夕飯'),
-        // 帯: 複数件の日と、長い予定名の日を混ぜる
-        h.ev(2, 9, 0, '整形外科'),
-        h.ev(2, 11, 0, '買い物'),
-        h.ev(2, 14, 0, '銀行'),
-        h.ev(2, 16, 0, '友人が来る'),
-        h.ev(3, 10, 0, '公民館で健康講座の受付手伝い'),
-        h.ev(4, 9, 0, '眼科'),
-        h.ev(4, 13, 0, '美容院'),
+        h.ev(0, 9, 30, '内科 定期けんしん'),
+        h.ev(1, 11, 30, '歯科'),
         h.ev(6, 10, 0, '訪問看護'),
+        h.ev(12, 10, 30, '銀行の担当が来る'),
       ];
     },
   },
   {
-    name: 'strip-worst',
-    label: '帯の最悪パターン（長いタイトルで省略＋他N件が同居）',
-    now: new Date('2026-08-29T05:00:00+09:00'),
+    name: 'today-empty',
+    label: '今日は予定なし（過去1年で54%を占める状態）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: RAINY,
     build(now) {
       const h = helpers(now);
-      return [
-        h.ev(0, 10, 0, '内科'),
-        h.ev(1, 10, 0, 'デイサービス'),
-        // 明後日以降: 長いタイトル＋複数件を各セルに仕込む
-        h.ev(2, 9, 0, '地域包括支援センターで介護保険の更新手続き'),
-        h.ev(2, 11, 0, '買い物'),
-        h.ev(2, 14, 0, '銀行'),
-        h.ev(2, 16, 0, 'friend'),
-        h.ev(3, 9, 0, '市立総合医療センター循環器内科の定期受診'),
-        h.ev(3, 15, 0, '薬局'),
-        h.ev(4, 9, 0, '公民館の健康講座に参加する予定です'),
-        h.ev(4, 10, 0, 'A'),
-        h.ev(4, 11, 0, 'B'),
-        h.ev(4, 12, 0, 'C'),
-        h.ev(4, 13, 0, 'D'),
-        h.ev(5, 9, 0, 'とてもとてもとても長い予定の名前がここに入ります'),
-        h.ev(5, 10, 0, 'X'),
-        h.ev(6, 9, 0, '短い'),
-        h.ev(6, 10, 0, 'Y'),
-      ];
+      return [h.ev(4, 14, 0, '美容院'), h.ev(9, 9, 30, '整形外科')];
     },
   },
   {
     name: 'empty',
-    label: '予定なし（両日とも空、帯も空）',
-    now: new Date('2026-08-29T05:00:00+09:00'),
+    label: '1ヶ月先まで予定なし',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: SUNNY,
     build: () => [],
+  },
+  {
+    name: 'crowded',
+    label: '今後の予定が多い日（小さめ表示に切り替わる）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: RAINY,
+    build(now) {
+      const h = helpers(now);
+      return [
+        h.allDay(0, 'ゴミ（もえる）'),
+        h.ev(0, 15, 0, 'たかしが来る'),
+        h.ev(1, 9, 0, 'リハビリ'),
+        h.ev(2, 13, 0, '美容院'),
+        h.ev(3, 10, 0, '訪問看護'),
+        h.ev(5, 14, 0, '町内会の集まり'),
+        h.ev(8, 9, 30, '眼科'),
+        h.ev(11, 10, 0, '敬老会'),
+        h.ev(15, 13, 0, '歯科検診'),
+        h.ev(22, 10, 0, '通院'),
+      ];
+    },
+  },
+  {
+    name: 'long-titles',
+    label: '長い予定名（省略の確認）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: COLD,
+    build(now) {
+      const h = helpers(now);
+      return [
+        h.ev(0, 9, 0, '市立総合医療センター 循環器内科 定期受診（紹介状を持参）'),
+        h.ev(2, 10, 0, '地域包括支援センターで介護保険の更新手続き'),
+        h.ev(5, 14, 0, '公民館で健康講座の受付手伝い'),
+      ];
+    },
+  },
+  {
+    name: 'all-day',
+    label: '終日の予定と日をまたぐ予定',
+    now: new Date('2026-12-31T06:00:00+09:00'),
+    weather: COLD,
+    build(now) {
+      const h = helpers(now);
+      return [
+        h.allDay(0, '大晦日'),
+        { allDay: false, startsAt: h.at(0, 23), endsAt: h.at(1, 1), title: '初詣' },
+        h.allDay(3, '新年会', 2),
+        h.ev(9, 10, 0, '病院はじめ'),
+      ];
+    },
   },
 ];
