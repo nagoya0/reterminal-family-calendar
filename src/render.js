@@ -196,7 +196,10 @@ body {
 .none { font-size: 25px; font-weight: 700; margin-top: 10px; }
 
 /* ---- 左下: 時間帯ごとの天気 ---- */
-.weather { height: 170px; border-top: 4px solid #000; display: flex; }
+/* 帯の中の区切りと同じ 2px に揃える。天気帯という一つのまとまりが
+   同じ太さの線で囲まれるので、境目の意味を太さで描き分けるより
+   ブロックとしての見た目が素直になる。 */
+.weather { height: 170px; border-top: 2px solid #000; display: flex; }
 .band {
   flex: 1; min-width: 0;
   border-left: 2px solid #000;
