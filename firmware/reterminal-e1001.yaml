@@ -25,13 +25,14 @@ esphome:
   on_boot:
     priority: -100
     then:
-      # Wi-Fi が繋がるまで待ってから取りに行く
-      # 何で起きたかを残す。0=電源投入/リセット 2=GPIO 4=タイマー
       - lambda: |-
           ESP_LOGI("wake", "起床要因: %d", (int) esp_sleep_get_wakeup_cause());
+      # Wi-Fi が繋がるまで待ってから取りに行く
       - wait_until:
           condition: wifi.connected
           timeout: 60s
+      # component.update は非同期。ここで眠らせると取得・描画の前に落ちるので、
+      # 眠る判断は online_image の on_download_finished / on_error から呼ぶ。
       - component.update: calendar_image
 
 esp32:
@@ -67,6 +68,52 @@ wifi:
     password: !secret fallback_password
 
 captive_portal:
+
+# 描画が終わったあとの締めくくり。取得の成否どちらからも呼ぶ。
+# mode: single なので二重に呼ばれても1回しか走らない。
+script:
+  - id: finish
+    mode: single
+    then:
+      # 緑ボタンで起きたときだけ起きたままにする（保守モード）。
+      # 通常の 00:00 起床は描画が済めば用が無いので即座に眠る。
+      - if:
+          condition:
+            lambda: 'return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;'
+          then:
+            - logger.log: "保守モード: 2分間起きたままにします"
+            - delay: 2min
+      # SNTP が同期していないと now() は1970年を返し、until: が出鱈目な秒数を
+      # 算出してしまう。数ヶ月眠り込みかねないので必ず有効性を確かめる。
+      - wait_until:
+          condition:
+            lambda: 'return id(jst).now().is_valid();'
+          timeout: 60s
+      - if:
+          condition:
+            lambda: 'return id(jst).now().is_valid();'
+          then:
+            - logger.log: "次の JST 00:00 まで眠ります"
+            - deep_sleep.enter:
+                id: sleeper
+                until: '00:00:00'
+                time_id: jst
+          else:
+            # Wi-Fi や NTP の一時的な不調を想定。1時間後に起きてやり直す。
+            - logger.log: "時刻を取得できませんでした。1時間後にやり直します"
+            - deep_sleep.enter:
+                id: sleeper
+                sleep_duration: 1h
+
+# until: で次の 00:00 までの秒数を計算するのに使う。
+# 起床のたびに同期し直すので、固定時間スリープのようなずれの蓄積が起きない。
+time:
+  - platform: sntp
+    id: jst
+    timezone: Asia/Tokyo
+    servers:
+      - ntp.nict.jp
+      - pool.ntp.org
 
 # ------------------------------------------------------------------
 # ここから調整用。deep_sleep を入れる段階でまとめて削除する。
@@ -140,19 +187,22 @@ binary_sensor:
     on_press:
       - logger.log: "→ボタンが押されました"
 # ------------------------------------------------------------------
-# GPIO3 が deep sleep の起床ピンに使えるかを確かめるための暫定ブロック。
-# 検証が済んだら本番の構成（JST 00:00 起床）に書き換える。
+# 起床時刻は script finish の deep_sleep.enter が毎回決める。
+# ここの run_duration と sleep_duration はどちらも保険。
 #
-# sleep_duration を併記しているのは安全装置。GPIO3 で起きられなかった場合でも
-# 15分後にタイマーで必ず起きるので、その間に OTA で書き直せる。
-# これが無いと「起こす手段が無い」状態になり USB を挿すしかなくなる。
+# run_duration: script が呼ばれないまま固まったときに必ず眠らせる上限。
+#   通常は約15秒、保守モードでも約2分半で script が眠らせるので普段は発火しない。
+#   短くすると取得や描画の途中で切られるため、あえて余裕を持たせる。
+# sleep_duration: その保険経路で眠るときの時間。until が使えていないので、
+#   1時間後に起こして通常の流れをやり直させる。
 #
-# run_duration は起床後に起きたままでいる時間。OTA を投げる猶予を取っている。
-# 本番ではもっと短くする（描画が終わったら即座に眠らせる）。
+# **緑ボタンはどんなファームを焼いても必ず戻ってこられる入口になる。**
+# 新しいファームに不具合があっても、押せば必ず2分の作業窓が開く。
+# 保守モードの長さは script finish 側で決めている。
 deep_sleep:
   id: sleeper
-  run_duration: 120s
-  sleep_duration: 15min
+  run_duration: 5min
+  sleep_duration: 1h
   wakeup_pin:
     number: GPIO3
     mode: INPUT_PULLUP
@@ -187,8 +237,11 @@ online_image:
     on_download_finished:
       - logger.log: "画像を取得しました。描画します。"
       - component.update: epaper
+      - script.execute: finish
     on_error:
+      # 取得できなくても眠らせる。画面は前回の内容が残る（ePaper なので消えない）。
       - logger.log: "画像の取得に失敗しました。"
+      - script.execute: finish
 
 display:
   - platform: waveshare_epaper
