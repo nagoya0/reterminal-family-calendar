@@ -69,6 +69,13 @@ captive_portal:
 # ここから調整用。deep_sleep を入れる段階でまとめて削除する。
 # 眠っている端末は HTTP を受けられないため両立しない。
 #
+# api は Home Assistant 用ではなく、esphome logs が Wi-Fi 経由で
+# ログを読むための経路として入れている。これが無いと USB を挿さない限り
+# ログが一切見えず、ボタンや deep_sleep の不具合を切り分けられない。
+api:
+  encryption:
+    key: !secret api_encryption_key
+
 # レイアウト調整のたびに USB を挿し直すのを避けるための仕組み。
 # Worker に新しい画像をデプロイしたあと、Mac から
 #   curl -u admin:<web_password> -X POST http://family-calendar.local/button/refresh/press
@@ -87,6 +94,39 @@ button:
     on_press:
       - logger.log: "手動で再取得します"
       - component.update: calendar_image
+
+# 本体上部の3つのボタン。実機で押して対応を確定済み:
+#   GPIO3 = 🔄（緑）  GPIO4 = ←  GPIO5 = →
+# Seeed の Wiki は左右を位置で書いているが実物の刻印とは逆だったので、
+# 刻印されている矢印そのものを名前にしている。
+# 🔄 は刻印どおり画像の再取得に割り当てた。
+#
+# 名前を英字にしているのは、ESPHome が名前から ASCII の識別子を作るため。
+# 日本語だけの名前は全て同じ識別子に潰れて衝突する。
+#
+# GPIO3 は strapping ピン（起動時のブートモード決定に使われる）で警告が出る。
+# 入力として読むだけなら実害はないが、deep_sleep の起床ピンに使えるかは
+# 実機で確認する。
+binary_sensor:
+  - platform: gpio
+    name: "Button Green"
+    id: btn_green
+    pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true }
+    on_press:
+      - logger.log: "緑ボタンが押されました → 画像を再取得します"
+      - component.update: calendar_image
+  - platform: gpio
+    name: "Button Left"
+    id: btn_left
+    pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true }
+    on_press:
+      - logger.log: "←ボタンが押されました"
+  - platform: gpio
+    name: "Button Right"
+    id: btn_right
+    pin: { number: GPIO5, mode: INPUT_PULLUP, inverted: true }
+    on_press:
+      - logger.log: "→ボタンが押されました"
 # ------------------------------------------------------------------
 
 # online_image が画像を取りに行くための HTTP クライアント
