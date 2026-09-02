@@ -24,10 +24,24 @@ esphome:
     # esphome の既定値は速すぎるので明示的に落とす。
     upload_speed: 230400
   on_boot:
-    priority: -100
-    then:
+    # 電池電圧の分圧回路を最優先で入れる。読むのは後（-100 の中）なので、
+    # その間に電圧が安定する。
+    - priority: 600
+      then:
+        - output.turn_on: battery_enable
+
+    - priority: -100
+      then:
       - lambda: |-
           ESP_LOGI("wake", "起床要因: %d", (int) esp_sleep_get_wakeup_cause());
+
+      # 電池残量を測る。Wi-Fi より前に済ませておく。回線が不調でも残量だけは
+      # 画面に出したいため（電池切れが近いことは、予定より先に知りたい）。
+      - component.update: battery_voltage
+      - component.update: battery_level
+      - lambda: |-
+          ESP_LOGI("battery", "電池: %.2f V / %.0f%%",
+                   id(battery_voltage).state, id(battery_level).state);
 
       # 緑ボタンで起きたときだけ鳴らす。通常の 00:00 起床では鳴らさない
       # （夜中に音を立てない。誰も聞いていないので意味も無い）。
@@ -375,6 +389,52 @@ output:
     id: buzzer
     frequency: 1000Hz
 
+  # 電池電圧の分圧回路を有効にするピン。常時有効だと電池を食うので、
+  # 測るときだけ入れる（下の on_boot で起動直後に入れている）。
+  - platform: gpio
+    pin: GPIO21
+    id: battery_enable
+
+# 電池残量。実家に置く装置で「いつの間にか電池切れ」は最も避けたい失敗なので、
+# 画面に出して気づけるようにする。**サーバは電池の状態を知りようがないので、
+# 端末側で描くこの仕組みが唯一の方法。**
+#
+# Seeed の作例は update_interval で定期的に測る形だが、この端末は約15秒で眠るため
+# それだと一度も測らないまま就寝する。never にして起床時に明示的に測る。
+sensor:
+  - platform: adc
+    pin: GPIO1
+    id: battery_voltage
+    attenuation: 12db
+    update_interval: never
+    filters:
+      # 分圧されているので倍に戻す
+      - multiply: 2.0
+
+  - platform: template
+    id: battery_level
+    update_interval: never
+    lambda: 'return id(battery_voltage).state;'
+    filters:
+      # リチウムイオン電池の電圧は残量に対して直線的でないため、実測に基づく
+      # 折れ線で対応づける（値は Seeed の作例）。
+      - calibrate_linear:
+          - 4.15 -> 100.0
+          - 3.96 -> 90.0
+          - 3.91 -> 80.0
+          - 3.85 -> 70.0
+          - 3.80 -> 60.0
+          - 3.75 -> 50.0
+          - 3.68 -> 40.0
+          - 3.58 -> 30.0
+          - 3.49 -> 20.0
+          - 3.41 -> 10.0
+          - 3.30 -> 5.0
+          - 3.27 -> 0.0
+      - clamp:
+          min_value: 0
+          max_value: 100
+
 # 画面右上に重ねる小さな情報表示用。
 #
 # **TTF ではなくビットマップフォント（BDF）を使う。** 本文用の書体を小さく縮めると
@@ -384,9 +444,17 @@ output:
 #
 # glyphs を絞ると焼き込まれる字形が減る。数字と記号だけなので数KBで済む。
 font:
+  # 左上のファーム版。診断のときしか読まないので小さくてよい。
   - file: "../assets/fonts/ter-u12b.bdf"
-    id: overlay_font
-    glyphs: "0123456789-.%:+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "
+    id: version_font
+    glyphs: "0123456789-"
+
+  # 右上の電池残量。母が日常的に見る情報なので一回り大きくする。
+  # 16px は右上の余白（実測 20px）に収まる上限で、18px 以上だと
+  # 「今後の予定」の見出しに接触する。
+  - file: "../assets/fonts/ter-u16b.bdf"
+    id: battery_font
+    glyphs: "0123456789-%"
 
 spi:
   clk_pin: GPIO7
@@ -435,19 +503,29 @@ display:
       // 白黒反転してしまうので、機器の都合は表示側で引き受ける。
       it.image(0, 0, id(calendar_image), COLOR_OFF, COLOR_ON);
 
-      // 端末しか知らない情報を右上に重ねる。
+      // 端末しか知らない情報を画面の両上端に重ねる。
+      // サーバが作る PNG には書けない情報なので、端末側で描くしかない。
       //
-      // サーバが作る PNG には書けない情報（ファームの版、いずれ電池残量）を
-      // 出すための場所。レイアウトには組み込まず、隅に小さく置く。
+      // **電池残量は右上。** スマートフォンが右上に出すので、母は説明されなくても
+      // 意味を察せる。慣れた場所に慣れたものを置くという判断で、画面全体の方針
+      //（説明を要さないこと）と一致している。版は反対側の左上に離す。
       //
-      // 右列の上端には 14px の余白があり、サーバ側は決してそこへ描かないので
-      // 重なる心配がない。
-      //
-      // 版はビルド時刻を MMDD-HHMM に縮めたもの。
-      // "2026-09-02 09:00:58 +0900" → "0902-0900"
+      // サーバ側の上端の余白は左 30px・右 20px（dist の PNG で実測）。
+      // 12px の文字を y=2 に置けばどちらとも重ならない。
       char bt[esphome::Application::BUILD_TIME_STR_SIZE];
       App.get_build_time_string(bt);
-      char overlay[16];
-      snprintf(overlay, sizeof(overlay), "%c%c%c%c-%c%c%c%c",
+      char version[16];
+      // ビルド時刻を MMDD-HHMM に縮める
+      // "2026-09-02 09:00:58 +0900" → "0902-0900"
+      snprintf(version, sizeof(version), "%c%c%c%c-%c%c%c%c",
                bt[5], bt[6], bt[8], bt[9], bt[11], bt[12], bt[14], bt[15]);
-      it.print(796, 2, id(overlay_font), COLOR_ON, TextAlign::TOP_RIGHT, overlay);
+      it.print(4, 2, id(version_font), COLOR_ON, TextAlign::TOP_LEFT, version);
+
+      // 測れていない場合は数字を出さない（0% と出すと誤解を招く）。
+      char battery[8];
+      if (std::isnan(id(battery_level).state)) {
+        snprintf(battery, sizeof(battery), "--%%");
+      } else {
+        snprintf(battery, sizeof(battery), "%.0f%%", id(battery_level).state);
+      }
+      it.print(796, 2, id(battery_font), COLOR_ON, TextAlign::TOP_RIGHT, battery);
