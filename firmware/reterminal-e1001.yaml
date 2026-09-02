@@ -375,6 +375,19 @@ output:
     id: buzzer
     frequency: 1000Hz
 
+# 画面右上に重ねる小さな情報表示用。
+#
+# **TTF ではなくビットマップフォント（BDF）を使う。** 本文用の書体を小さく縮めると
+# 1bit 化で線が飛んだり潰れたりするが、BDF は特定のピクセルサイズ用に字形が一点ずつ
+# 設計されているため縮小も補間も起きない。Terminus は小さいサイズでの可読性のために
+# 作られた書体で、この用途に最も適している。b はボールドで、細い方より ePaper に残る。
+#
+# glyphs を絞ると焼き込まれる字形が減る。数字と記号だけなので数KBで済む。
+font:
+  - file: "../assets/fonts/ter-u12b.bdf"
+    id: overlay_font
+    glyphs: "0123456789-.%:+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "
+
 spi:
   clk_pin: GPIO7
   mosi_pin: GPIO9
@@ -421,3 +434,20 @@ display:
       // サーバ側を negate すると shots の出力や印刷用の画像まで
       // 白黒反転してしまうので、機器の都合は表示側で引き受ける。
       it.image(0, 0, id(calendar_image), COLOR_OFF, COLOR_ON);
+
+      // 端末しか知らない情報を右上に重ねる。
+      //
+      // サーバが作る PNG には書けない情報（ファームの版、いずれ電池残量）を
+      // 出すための場所。レイアウトには組み込まず、隅に小さく置く。
+      //
+      // 右列の上端には 14px の余白があり、サーバ側は決してそこへ描かないので
+      // 重なる心配がない。
+      //
+      // 版はビルド時刻を MMDD-HHMM に縮めたもの。
+      // "2026-09-02 09:00:58 +0900" → "0902-0900"
+      char bt[esphome::Application::BUILD_TIME_STR_SIZE];
+      App.get_build_time_string(bt);
+      char overlay[16];
+      snprintf(overlay, sizeof(overlay), "%c%c%c%c-%c%c%c%c",
+               bt[5], bt[6], bt[8], bt[9], bt[11], bt[12], bt[14], bt[15]);
+      it.print(796, 2, id(overlay_font), COLOR_ON, TextAlign::TOP_RIGHT, overlay);
