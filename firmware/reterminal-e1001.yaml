@@ -136,6 +136,7 @@ script:
               - lambda: |-
                   if (response->status_code != 200) {
                     ESP_LOGW("fw", "確認できませんでした (HTTP %d)", response->status_code);
+                    id(fw_status) = "確認できず(HTTP " + std::to_string(response->status_code) + ")";
                     return;
                   }
                   char mine[App.BUILD_TIME_STR_SIZE];
@@ -148,14 +149,17 @@ script:
                   }
                   if (theirs == mine) {
                     ESP_LOGI("fw", "最新です (%s)", mine);
+                    id(fw_status) = std::string("最新 ") + mine;
                     return;
                   }
                   ESP_LOGI("fw", "更新があります: %s -> %s", mine, theirs.c_str());
+                  id(fw_status) = std::string("更新あり ") + mine + " -> " + theirs;
                   id(fw_update_needed) = true;
           on_error:
             then:
               # 確認できなくても画面は出す。ここで止める方が害が大きい。
               - logger.log: "ファームウェアの確認に失敗しました。今回は見送ります"
+              - globals.set: { id: fw_status, value: '"取得失敗"' }
       - if:
           condition:
             lambda: 'return id(fw_update_needed);'
@@ -169,10 +173,13 @@ script:
                 password: !secret fw_password
             # 成功していれば再起動しているので、ここに来たのは失敗したとき。
             - logger.log: "書き込みに失敗しました。次の起床でやり直します"
+            - globals.set: { id: fw_status, value: '"書き込み失敗"' }
 
   - id: finish
     mode: single
     then:
+      # on_boot 時点のログは読めないので、ここでもう一度出す。
+      - lambda: 'ESP_LOGI("fw", "ファームウェア: %s", id(fw_status).c_str());'
       # 緑ボタンで起きたときだけ起きたままにする（保守モード）。
       # 通常の 00:00 起床は描画が済めば用が無いので即座に眠る。
       - if:
@@ -221,6 +228,15 @@ globals:
     # 起床のたびに判定し直すので NVS に残す必要はない。
     restore_value: no
     initial_value: 'false'
+
+  # 確認の結果を控えておき、就寝前にもう一度ログへ出す。
+  # ファーム確認は on_boot の中で esphome logs が接続する前に終わるため、
+  # その場のログは読めない。見えない成功は信用できないので、後から読める
+  # ところへ残しておく。
+  - id: fw_status
+    type: std::string
+    restore_value: no
+    initial_value: '"未確認"'
 
 # until: で次の 00:00 までの秒数を計算するのに使う。
 # 起床のたびに同期し直すので、固定時間スリープのようなずれの蓄積が起きない。
