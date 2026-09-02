@@ -515,10 +515,14 @@ display:
       char bt[esphome::Application::BUILD_TIME_STR_SIZE];
       App.get_build_time_string(bt);
       char version[16];
-      // ビルド時刻を MMDD-HHMM に縮める
-      // "2026-09-02 09:00:58 +0900" → "0902-0900"
-      snprintf(version, sizeof(version), "%c%c%c%c-%c%c%c%c",
-               bt[5], bt[6], bt[8], bt[9], bt[11], bt[12], bt[14], bt[15]);
+      // ビルド時刻を YYMMDD-HHMM に縮める
+      // "2026-09-02 09:00:58 +0900" → "260902-0900"
+      //
+      // 年を入れているのは、実家に置いたあと1年以上更新しないことが十分あり得る
+      // ため。月日だけだと何年のものか分からなくなる。
+      snprintf(version, sizeof(version), "%c%c%c%c%c%c-%c%c%c%c",
+               bt[2], bt[3], bt[5], bt[6], bt[8], bt[9],
+               bt[11], bt[12], bt[14], bt[15]);
       it.print(4, 2, id(version_font), COLOR_ON, TextAlign::TOP_LEFT, version);
 
       // 測れていない場合は数字を出さない（0% と出すと誤解を招く）。
