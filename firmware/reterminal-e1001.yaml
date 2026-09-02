@@ -18,6 +18,9 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: 家族カレンダー
+  # lambda から esp_sntp_set_time_sync_notification_cb を使うため
+  includes:
+    - sntp_status.h
   platformio_options:
     # この個体は CH340K の USB-UART ブリッジを UART0 で使っており、
     # macOS のドライバとの組み合わせで 460800 以上だと連続転送が壊れる。
@@ -34,6 +37,15 @@ esphome:
       then:
       - lambda: |-
           ESP_LOGI("wake", "起床要因: %d", (int) esp_sleep_get_wakeup_cause());
+
+          // **SNTP の本物の同期通知を自分で受ける。**
+          // ESP-IDF がサーバから応答を受け取ったときにしか呼ばれないので、
+          // 時計の妥当性を見る判定が入り込む余地がない。ESPHome が setup で
+          // 登録したものを上書きするが、失われるのは当てにできないと分かった
+          // on_time_sync と「Synchronized time」のログだけ。
+          esp_sntp_set_time_sync_notification_cb([](struct timeval *tv) {
+            time_synced->value() = true;
+          });
 
       # 電池残量を測る。Wi-Fi より前に済ませておく。回線が不調でも残量だけは
       # 画面に出したいため（電池切れが近いことは、予定より先に知りたい）。
@@ -214,15 +226,16 @@ script:
       # 確定の条件として十分。途中でクラッシュすればここには来ず、巻き戻しが効く。
       - lambda: 'esp_ota_mark_app_valid_cancel_rollback();'
 
-      # SNTP が同期していないと now() は1970年を返し、until: が出鱈目な秒数を
-      # 算出してしまう。数ヶ月眠り込みかねないので必ず有効性を確かめる。
+      # **本物の同期を待つ。値の妥当性（is_valid）では足りない。**
+      # is_valid() は「値の範囲が妥当か」しか見ないので、10分ずれた時刻も通す。
+      # 詳しくは globals の time_synced のコメント参照。
       - wait_until:
           condition:
-            lambda: 'return id(jst).now().is_valid();'
+            lambda: 'return id(time_synced);'
           timeout: 60s
       - if:
           condition:
-            lambda: 'return id(jst).now().is_valid();'
+            lambda: 'return id(time_synced) && id(jst).now().is_valid();'
           then:
             - logger.log: "次の JST 00:00 まで眠ります"
             - deep_sleep.enter:
@@ -237,6 +250,21 @@ script:
                 sleep_duration: 1h
 
 globals:
+  # SNTP が**ネットワークから応答を受け取って**時刻を直したか。
+  #
+  # ESPHome の on_time_sync は使えない。ESP32 では2つの経路から発火し、片方は
+  # sntp_component.cpp の loop で now().is_valid() を見るだけなので、deep sleep
+  # 復帰時の推定時刻（スリープ前の時刻＋スリープ時間）でも真になる。推定値には
+  # RTC のずれがそのまま乗っている。
+  #
+  # 実際に起きた事象（2026-09-03）: 13時間半の就寝で RTC が約10分進み、実際の
+  # 23:50 に「00:00 になった」と判断して起床。ずれた時刻で「次の 00:00」を計算した
+  # 結果 +24時間 眠り込み、画面が丸一日止まった。
+  - id: time_synced
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
   - id: fw_update_needed
     type: bool
     # 起床のたびに判定し直すので NVS に残す必要はない。
