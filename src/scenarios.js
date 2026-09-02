@@ -26,19 +26,20 @@ function helpers(now) {
  * 天気のダミー。実際の取得を伴わずにレイアウトを確認するため。
  * pops は [朝, 昼, 夜]、icons は同じ並びのアイコン名。
  */
-function weather(tempMax, tempMin, pops, icons) {
+function weather(tempMax, tempMin, pops, icons, mms = [0, 0, 0]) {
   return {
     date: null,
     tempMax, tempMin,
     slots: BANDS.map((b, i) => ({
-      ...b, span: b.hours, code: null, pop: pops[i], icon: icons[i], temp: tempMax,
+      ...b, span: b.hours, code: null, pop: pops[i], mm: mms[i], icon: icons[i], temp: tempMax,
     })),
   };
 }
 
-const SUNNY = weather(31, 24, [8, 12, 5], ['wi-day-sunny', 'wi-day-sunny', 'wi-night-clear']);
-const RAINY = weather(22, 19, [76, 88, 62], ['wi-showers', 'wi-rain', 'wi-showers']);
-const COLD  = weather(4, -2, [20, 30, 70], ['wi-cloudy', 'wi-cloudy', 'wi-snow']);
+const SUNNY = weather(31, 24, [8, 12, 5], ['wi-day-sunny', 'wi-day-sunny', 'wi-night-clear'], [0, 0, 0]);
+// 量は「1mm未満で小数が出る」「2桁」を混ぜて、帯の幅が最も厳しくなる形にしてある。
+const RAINY = weather(22, 19, [76, 88, 62], ['wi-showers', 'wi-rain', 'wi-showers'], [0.5, 32, 4]);
+const COLD  = weather(4, -2, [20, 30, 70], ['wi-cloudy', 'wi-cloudy', 'wi-snow'], [0, 0.2, 3]);
 
 export const scenarios = [
   {
@@ -53,6 +54,37 @@ export const scenarios = [
         h.ev(1, 11, 30, '歯科'),
         h.ev(6, 10, 0, '訪問看護'),
         h.ev(12, 10, 30, '銀行の担当が来る'),
+      ];
+    },
+  },
+  {
+    name: 'today-3',
+    label: '今日3件（実データの最大。小さめ表示に切り替わる）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: SUNNY,
+    build(now) {
+      const h = helpers(now);
+      return [
+        h.ev(0, 9, 0, '内科 定期けんしん'),
+        h.ev(0, 13, 30, 'デイサービス'),
+        h.ev(0, 18, 0, '町内会の役員会'),
+        h.ev(3, 10, 0, '訪問看護'),
+      ];
+    },
+  },
+  {
+    name: 'today-4',
+    label: '今日4件（想定外の密度。「他N件」で示す）',
+    now: new Date('2026-09-02T06:00:00+09:00'),
+    weather: SUNNY,
+    build(now) {
+      const h = helpers(now);
+      return [
+        h.ev(0, 9, 0, '内科 定期けんしん'),
+        h.ev(0, 11, 0, '配達の受け取り'),
+        h.ev(0, 13, 30, 'デイサービス'),
+        h.ev(0, 18, 0, '町内会の役員会'),
+        h.ev(3, 10, 0, '訪問看護'),
       ];
     },
   },

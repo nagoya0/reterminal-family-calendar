@@ -17,6 +17,12 @@ import { eventsForDay, timeLabel } from './events.js';
  * 予定が少ない日でも画面が意味を持つ、という副次的な効果もある。
  */
 
+/** 今日の予定を何件まで出すか。これを超えたら「他N件」で示す。 */
+const TODAY_MAX = 3;
+
+/** 今日の予定がこの件数以上なら小さめの表示に切り替える */
+const TODAY_DENSE_FROM = 3;
+
 /** 今後の予定を何日先まで拾うか */
 const UPCOMING_DAYS = 30;
 
@@ -41,6 +47,24 @@ function weatherIcon(name) {
   return iconCache.get(name);
 }
 
+/**
+ * 帯に出す降水の表示。「50%・4mm」の形。
+ *
+ * 確率は「降るか」、量は「どれだけ」を答えており、役割が違う。気象庁自身が
+ * 「確率が高いと雨量が多くなるという意味ではありません」と注記しているとおりで、
+ * 70%・0.1mm（高い確率でぱらつく）のような状態は両方出さないと伝わらない。
+ *
+ * 量が0のときは確率だけにする。「0mm」は情報を足さないうえ、桁が増えて読みにくい。
+ */
+function bandRain(slot) {
+  if (slot.pop === null) return '—';
+  const pop = `${slot.pop}%`;
+  if (!slot.mm) return pop;
+  // 1mm以上は整数で十分。1mm未満は小数1桁でないと0になってしまう。
+  const mm = slot.mm >= 1 ? Math.round(slot.mm) : slot.mm.toFixed(1);
+  return `${pop}・${mm}mm`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -61,23 +85,44 @@ function renderToday(events, todayKey, weather) {
   const d = describeDay(todayKey);
   const list = eventsForDay(events, todayKey);
 
-  const body = list.length === 0
-    ? '<p class="none">きょうの予定はありません</p>'
-    : list.map((ev) => `
+  // 過去1年の実データでは1日の予定は最大3件だった。3件までは全部出す。
+  // 3件だと通常の字では入らないので小さめに切り替える。
+  // 4件以上は想定外の密度なので、入るだけ出して残りを件数で示す。
+  const dense = list.length >= TODAY_DENSE_FROM;
+  const shown = list.slice(0, TODAY_MAX);
+  const hidden = list.length - shown.length;
+
+  const rows = shown.map((ev) => `
         <div class="ev">
           <div class="time">${escapeHtml(timeLabel(ev, todayKey))}</div>
           <div class="what">${escapeHtml(ev.title)}</div>
         </div>`).join('');
 
+  // 「他N件」は .mine の中に入れない。中に入れると予定が溢れたとき overflow で
+  // 一緒に消え、予定の存在が黙って隠れる（右列で同じ失敗をして直した）。
+  // かわりに .todays で包み、.mine 側だけを縮める。こうすると予定の直後に
+  // 「他N件」が続き、余った高さはその下に落ちる。溢れたときは .mine が縮んで
+  // 予定が切れるが、「他N件」は必ず残る。
+  const body = list.length === 0
+    ? '<div class="todays"><div class="mine"><p class="none">きょうの予定はありません</p></div></div>'
+    : `<div class="todays">
+        <div class="mine${dense ? ' dense' : ''}">${rows}
+        </div>${hidden > 0 ? `\n        <p class="more">他${hidden}件</p>` : ''}
+      </div>`;
+
+  // 最高と最低を縦に積む。`31° / 24°` と横に並べると、12月28日 のような幅の広い
+  // 日付と同じ行に収まらない（現行の 44px でも余裕が無かった）。縦に積めば幅が
+  // 3文字分で済み、日付を大きくする余地が生まれる。
+  // 上下に分かれることで、どちらが最高でどちらが最低かも位置で分かるようになった。
   const temps = weather
-    ? `<span class="temp">${weather.tempMax}° / ${weather.tempMin}°</span>`
+    ? `<span class="temp"><span class="t-stack"><span class="t-hi">${weather.tempMax}</span><span class="t-lo">${weather.tempMin}</span></span><span class="t-unit">°C</span></span>`
     : '';
 
   const bands = weather ? weather.slots.map((s) => `
         <div class="band">
           <div class="band-label">${escapeHtml(s.label)} <span class="band-hours">${s.start}-${s.start + s.span}</span></div>
           <div class="band-icon">${weatherIcon(s.icon)}</div>
-          <div class="band-pop">${s.pop === null ? '—' : `${s.pop}%`}</div>
+          <div class="band-pop">${bandRain(s)}</div>
         </div>`).join('') : '';
 
   return `
@@ -86,8 +131,7 @@ function renderToday(events, todayKey, weather) {
         <span class="md">${d.month}月${d.day}日<span class="dow">(${d.weekday})</span></span>
         ${temps}
       </header>
-      <div class="mine">${body}
-      </div>
+      ${body}
       ${weather ? `<footer class="weather">${bands}
       </footer>` : ''}
     </div>`;
@@ -180,38 +224,71 @@ body {
 }
 
 .head {
-  padding: 14px 18px 10px;
+  padding: 14px 18px 2px;
   display: flex; align-items: baseline; gap: 12px;
 }
-.md   { font-size: 44px; font-weight: 700; white-space: nowrap; }
+.md   { font-size: 48px; font-weight: 700; white-space: nowrap; }
 /* 曜日は日付より一段落として気温と同じ大きさに揃える。
    日付が主で、曜日と気温は補助という関係を字の大きさで示す。 */
 .dow  { font-size: 28px; font-weight: 700; margin-left: 2px; }
-.temp { font-size: 28px; font-weight: 700; margin-left: auto; white-space: nowrap; }
+/* 気温は縦積み。幅を詰めるためで、理由は renderToday のコメント参照。
+   align-self: center で、日付の行の中央に置く（baseline だと上に張り付く）。 */
+.temp {
+  margin-left: auto; align-self: flex-start;
+  /* 日付の字面の上端に合わせる。flex-start だと行の上端に付くが、日付側は
+     字の上に余白（レディング）を持つため 12px ずれる。実測で合わせた値。
+     .md のサイズを変えたらここも測り直す（dist の PNG で上端を比べる）。 */
+  margin-top: 12px;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.t-stack { display: flex; flex-direction: column; align-items: stretch; text-align: center; }
+.t-hi, .t-lo { font-size: 26px; font-weight: 700; line-height: 1.08; padding: 0 3px; }
+/* 罫線は下の数値に付ける。stretch なので広い方の幅に揃う。 */
+.t-lo { border-top: 2px solid #000; }
+.t-unit { font-size: 22px; font-weight: 700; }
 
-.mine { flex: 1; min-height: 0; padding: 0 18px; overflow: hidden; }
+/* .todays が残りの高さを取り、その中で予定と「他N件」を上に詰める。
+   .mine だけが縮む（flex: 0 1 auto）ので、溢れても「他N件」は残る。 */
+.todays { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mine { flex: 0 1 auto; min-height: 0; padding: 0 18px; overflow: hidden; }
 .ev   { margin-top: 10px; }
+/* ヘッダの下余白と重なって二重の空きになるので、先頭だけ落とす。
+   予定の領域を上に寄せて、3件目が入る高さを稼ぐ。 */
+.ev:first-child { margin-top: 6px; }
 .time { font-size: 25px; font-weight: 700; }
 .what { font-size: 33px; font-weight: 700; line-height: 1.15; word-break: auto-phrase; }
 .none { font-size: 25px; font-weight: 700; margin-top: 10px; }
+
+/* 3件になると通常の字では入りきらない。件数を優先して字を小さくする。
+   切れて読めなくなるより、小さくても全部見える方がよい。 */
+.mine.dense .ev   { margin-top: 5px; }
+.mine.dense .ev:first-child { margin-top: 4px; }
+.mine.dense .time { font-size: 19px; line-height: 1.15; }
+.mine.dense .what { font-size: 26px; line-height: 1.08; }
+.left .more { padding: 0 18px 2px; }
 
 /* ---- 左下: 時間帯ごとの天気 ---- */
 /* 帯の中の区切りと同じ 2px に揃える。天気帯という一つのまとまりが
    同じ太さの線で囲まれるので、境目の意味を太さで描き分けるより
    ブロックとしての見た目が素直になる。 */
 .weather { height: 170px; border-top: 2px solid #000; display: flex; }
+/* 中身は上端から並べる。中央揃えにすると、降水の文字の大きさを変えたときに
+   見出しやアイコンまで動く（実測で 6px ずれた）。増減は下の余白で吸収させる。 */
 .band {
   flex: 1; min-width: 0;
   border-left: 2px solid #000;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 2px;
+  align-items: center; justify-content: flex-start; gap: 2px;
+  padding-top: 3px;
 }
 .band:first-child { border-left: 0; }
 .band-label { font-size: 24px; font-weight: 700; white-space: nowrap; }
 .band-hours { font-size: 19px; font-weight: 700; }
 .band-icon  { width: 86px; height: 86px; }
 .band-icon svg { width: 100%; height: 100%; display: block; }
-.band-pop   { font-size: 26px; font-weight: 700; }
+/* 帯の幅は 134px しかない。76%・32mm のような最長の並びが1行で収まる大きさ。 */
+/* 字が小さくなったぶん上に寄るので、下端の余白が変更前と揃うよう押し下げる。 */
+.band-pop   { font-size: 18px; font-weight: 700; white-space: nowrap; margin-top: 9px; }
 
 /* ---- 右: 今後の予定 ---- */
 .right {

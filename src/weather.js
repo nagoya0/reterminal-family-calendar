@@ -1,9 +1,18 @@
-// Open-Meteo から天気を取る。APIキー・登録・課金いずれも不要。
+// 天気を取る。APIキー・登録・課金いずれも不要。
 //
-// 気象庁の公開JSONも検討したが、時間ごとの降水確率が取れず、6時間ごとの
-// 4区分までだった。家庭菜園では「いつ降るか」の時間解像度が効くため
-// Open-Meteo を採る。第三者の比較検証でも、降水量は気象庁の予報とよく
-// 同期していると報告されている。
+// **2つの出典を使い分けている。**
+//
+//   降水確率  気象庁      母がテレビや tenki.jp で見る数字と一致させるため
+//   降水量    Open-Meteo  気象庁は短期予報に出していない
+//   気温      Open-Meteo  地点の最高・最低
+//   アイコン  Open-Meteo  気象庁の天気コードは1日1個で、時間帯ごとに割れない
+//
+// 当初は Open-Meteo だけで済ませ、降水確率も時間ごとの値の最大でまとめていた。
+// しかしそれは気象庁の「6時間で1mm以上降る確率」とは別の量で、実際に食い違う
+// （ある日の夜は気象庁 70% に対し最大値方式では 84%）。詳しくは src/jma.js。
+//
+// アイコンの素材は Weather Icons。気象庁公式の SVG は1bit化すると
+// 「晴れ」と「曇時々晴」が同じ絵になり、情報として嘘をつく（検証済み）。
 //
 // 母の活動時間は 6時〜24時。深夜は表示しない。
 
@@ -19,6 +28,7 @@
  * 表示上の差は出ない。elevation を明示すれば完全一致するが、標高も住所を
  * 絞り込む手がかりになるため指定しない。
  */
+import { fetchPops } from './jma.js';
 export const LOCATION = { latitude: 35.2, longitude: 137.0 };
 
 /** この降水確率を超えたら、天気コードによらず雨寄りの絵にする */
@@ -79,9 +89,16 @@ export async function fetchForecast({
   bands = BANDS,
   days = 3,
 } = {}) {
+  // 降水確率は気象庁を優先する。取れなくても画面は出す。データ源が2つに
+  // 増えたぶん、片方が落ちたときに天気ごと消えないようにしておく。
+  const jmaPops = await fetchPops().catch((e) => {
+    console.warn(`気象庁の降水確率を取得できませんでした（Open-Meteo で代用します）: ${e.message}`);
+    return null;
+  });
+
   const params = new URLSearchParams({
     latitude, longitude,
-    hourly: 'temperature_2m,precipitation_probability,weather_code',
+    hourly: 'temperature_2m,precipitation,precipitation_probability,weather_code',
     daily: 'temperature_2m_max,temperature_2m_min',
     timezone: 'Asia/Tokyo',
     forecast_days: String(days),
@@ -91,6 +108,7 @@ export async function fetchForecast({
   const data = await res.json();
 
   const { time, temperature_2m: temps, precipitation_probability: pops,
+          precipitation: rainMm,
           weather_code: codes } = data.hourly;
 
   // 時刻の文字列は "YYYY-MM-DDTHH:00"。日付ごとに添字を引けるようにする。
@@ -111,11 +129,18 @@ export async function fetchForecast({
         if (i !== undefined) idx.push(i);
       }
       if (idx.length === 0) {
-        return { label, start, span, code: null, icon: 'wi-cloudy', pop: null, temp: null };
+        return { label, start, span, code: null, icon: 'wi-cloudy', pop: null, mm: null, temp: null };
       }
 
-      // 降水確率は最大値。「この時間帯に降るか」を知りたいので。
-      const pop = Math.max(...idx.map((i) => pops[i] ?? 0));
+      // 降水確率は気象庁の発表を使う。母がテレビや tenki.jp で見る数字と
+      // 一致させるため（src/jma.js の冒頭参照）。発表が無い日は Open-Meteo の
+      // 時間ごとの値の最大で代用する。別の量になるが、無いよりはよい。
+      const pop = jmaPops?.[date]?.[start] ?? Math.max(...idx.map((i) => pops[i] ?? 0));
+
+      // 降水量は6時間の合計。「この時間帯にどれだけ降るか」を答える。
+      // 平均(mm/h)にすると山が消える（2mm降る1時間があっても 0.7mm/h になる）。
+      // 家庭菜園で知りたいのは水やりの要否で、それは総量で決まる。
+      const mm = Math.round(idx.reduce((sum, i) => sum + (rainMm[i] ?? 0), 0) * 10) / 10;
       // 天気は最も悪いものを代表にする。晴れ時々雨を晴れと出さないため。
       const code = idx.map((i) => codes[i]).sort((a, b) => severity(b) - severity(a))[0];
 
@@ -126,7 +151,7 @@ export async function fetchForecast({
       // 利用者が自分で判断し直せる。
       const rainy = pop >= RAIN_ICON_THRESHOLD && severity(code) < 3;
       return {
-        label, start, span, code, pop,
+        label, start, span, code, pop, mm,
         icon: rainy ? 'wi-showers' : iconFor(code, { night: start >= 18 }),
         temp: Math.round(temps[idx[0]]),
       };
