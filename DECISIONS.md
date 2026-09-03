@@ -67,21 +67,63 @@ SNTP 同期済みの実時刻から目標時刻までの差分を毎回計算し
 +24時間する。起床のたびに再計算されるのでずれが蓄積しない。
 
 **ただし SNTP 未同期のまま実行すると 1970年 を基準に計算して出鱈目な時間眠る。**
-時刻の有効性を確認してから眠り、取れなければ1時間後に起きてやり直すガードが要る:
+時刻の有効性は `is_valid()` で確認すればよい……と最初は考えたが、**これでは
+足りない**ことが実機で分かった（2026-09-03）。
+
+`is_valid()` は「値の範囲が妥当か」しか見ない。deep_sleep 復帰直後の時刻は
+まず「スリープ前の時刻 + スリープ時間」の推定値が入り、これは SNTP がまだ
+何も直していなくても `is_valid()` を通ってしまう。ESP32 の内蔵 RC 発振器は
+ドリフトが大きく（実測 約1.2%）、13時間半の睡眠で RTC が約10分進んだ。
+結果、実際は 23:50 なのに「00:00 になった」と誤判定し、次の 00:00 を計算
+した時点で既に過ぎていると見なして **+24時間眠り込み、画面が丸一日止まった**。
+
+**必要なのは「SNTP がネットワークから応答を受け取って時刻を直したという事実」**
+で、値の妥当性ではない。ESPHome の `on_time_sync` トリガーも使えない
+（ESP32 では2つの経路から発火し、片方は `sntp_component.cpp` の `loop()` が
+`now().is_valid()` を見ているだけなので、推定値でも真になってしまう）。
+確実なのは ESP-IDF の同期通知コールバックを自前で登録すること:
+
+```cpp
+// sntp_status.h
+#include "esp_sntp.h"
+```
+
+```yaml
+esphome:
+  includes: [sntp_status.h]
+
+globals:
+  - id: time_synced
+    type: bool
+    restore_value: no
+
+on_boot:
+  - priority: -100
+    then:
+      - lambda: |-
+          esp_sntp_set_time_sync_notification_cb([](struct timeval *tv) {
+            time_synced->value() = true;
+          });
+```
+
+`finish` 側は `is_valid()` の代わりに `time_synced` を待つ:
 
 ```yaml
 - wait_until:
     condition:
-      lambda: 'return id(jst).now().is_valid();'
+      lambda: 'return id(time_synced);'
     timeout: 60s
 - if:
     condition:
-      lambda: 'return id(jst).now().is_valid();'
+      lambda: 'return id(time_synced) && id(jst).now().is_valid();'
     then:
       - deep_sleep.enter: { id: sleeper, until: '00:00:00', time_id: jst }
     else:
       - deep_sleep.enter: { id: sleeper, sleep_duration: 1h }
 ```
+
+**2026-09-04 00:00 の実運用で確認済み。** 前夜から眠っていた端末が正しい
+時刻で起床し、日付表示が 9/4 に切り替わった。
 
 同時に **web_server・refresh ボタン・api を外す**。眠っている端末は接続を
 受けられず両立しないため。消し忘れると実家のLANに操作画面が残る

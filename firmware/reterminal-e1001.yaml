@@ -1,12 +1,10 @@
 # reTerminal E1001 — 実家向けカレンダー表示端末
 #
-# 検証段階の構成。deep_sleep はまだ入れていない。
-# 確かめたいのは次の2点:
-#   1. online_image が Seeed の ePaper で動くか（Wiki には file: の例しかない）
-#   2. 実機で文字が読めるか
-#
-# 画像はクラウドではなく同一LAN上の Mac から取得する。
-# 配信インフラを作る前に、端末側が動くことを先に確かめるため。
+# 画像は Cloudflare Worker（image_url）から取得し、JST 00:00 に deep_sleep
+# から起床して描画する。緑ボタン（EXT0）で起こしたときは2分の保守モードに
+# 入り、ファームウェアも http_request OTA で遠隔から更新できる
+# （worker-fw/ 側。npm run push-firmware → 端末が次の起動時に自動で取得）。
+# 詳しい経緯は DECISIONS.md 参照。
 #
 # ピン配置の出典: https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome/
 
@@ -291,12 +289,13 @@ time:
       - pool.ntp.org
 
 # ------------------------------------------------------------------
-# ここから調整用。deep_sleep を入れる段階でまとめて削除する。
-# 眠っている端末は HTTP を受けられないため両立しない。
+# ここから調整用。設置前に削除する。
+# 眠っている端末は HTTP を受けられないため、本来の運用とは両立しない。
 #
 # api は Home Assistant 用ではなく、esphome logs が Wi-Fi 経由で
 # ログを読むための経路として入れている。これが無いと USB を挿さない限り
 # ログが一切見えず、ボタンや deep_sleep の不具合を切り分けられない。
+# deep_sleep はもう入っているが、設置直前まではあえて残してある。
 api:
   encryption:
     key: !secret api_encryption_key
