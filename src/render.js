@@ -271,7 +271,7 @@ body {
 /* 帯の中の区切りと同じ 2px に揃える。天気帯という一つのまとまりが
    同じ太さの線で囲まれるので、境目の意味を太さで描き分けるより
    ブロックとしての見た目が素直になる。 */
-.weather { height: 170px; border-top: 2px solid #000; display: flex; }
+.weather { height: 161px; border-top: 2px solid #000; display: flex; }
 /* 中身は上端から並べる。中央揃えにすると、降水の文字の大きさを変えたときに
    見出しやアイコンまで動く（実測で 6px ずれた）。増減は下の余白で吸収させる。 */
 .band {
@@ -287,8 +287,7 @@ body {
 .band-icon  { width: 86px; height: 86px; }
 .band-icon svg { width: 100%; height: 100%; display: block; }
 /* 帯の幅は 134px しかない。76%・32mm のような最長の並びが1行で収まる大きさ。 */
-/* 字が小さくなったぶん上に寄るので、下端の余白が変更前と揃うよう押し下げる。 */
-.band-pop   { font-size: 18px; font-weight: 700; white-space: nowrap; margin-top: 9px; }
+.band-pop   { font-size: 18px; font-weight: 700; white-space: nowrap; }
 
 /* ---- 右: 今後の予定 ---- */
 .right {
