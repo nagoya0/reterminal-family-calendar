@@ -77,23 +77,62 @@ esphome:
           condition: wifi.connected
           timeout: 60s
 
-      # ------------------------------------------------------------------
-      # ファームウェアの確認は**画像取得より先に**行う。
+      # **本物の同期を待つ。値の妥当性（is_valid）では足りない。**
+      # is_valid() は「値の範囲が妥当か」しか見ないので、10分ずれた時刻も通す。
+      # 詳しくは globals の time_synced のコメント参照。
       #
-      # 回復手段が回復対象に依存してはいけないため。トークンを交換したり画像の
-      # URL を変えたりした場合、古いファームは画像を取得できない。
-      # 「画像取得 → 失敗で就寝」という順序だとここに到達せず、端末が永久に
-      # 更新を受け付けなくなる。実家まで USB を持って行く以外に手がなくなる。
-      - script.execute: check_firmware
+      # 以前は finish（画像取得後）で待っていたが、下の早期判定に時刻が要るため
+      # ここに引き上げた。
       - wait_until:
           condition:
-            lambda: 'return !id(check_firmware).is_running();'
-          timeout: 30s
-      # ------------------------------------------------------------------
+            lambda: 'return id(time_synced);'
+          timeout: 60s
 
-      # component.update は非同期。ここで眠らせると取得・描画の前に落ちるので、
-      # 眠る判断は online_image の on_download_finished / on_error から呼ぶ。
-      - component.update: calendar_image
+      # ------------------------------------------------------------------
+      # ターゲットは 00:00 ちょうどではなく 00:30（script sleep_until_next 参照）。
+      # ただし ESP32 の deep_sleep タイマーは内蔵 RC 発振器を使うため数%ドリフトし、
+      # 実測で 24時間睡眠につき約10分早まる。00:30 のマージンを超えて早まり、
+      # まだ日付が変わる前（23時台）に起きてしまうことがある。
+      #
+      # この状態で画像取得やファーム確認を進めても、次に起きるのはさらに
+      # 24時間後になってしまう可能性がある（今日の分の処理はできるが、翌日分の
+      # 処理をもう一度素早くやり直す機会を逃す）。「日付が変わったか」を明示的に
+      # 判定し、変わっていなければ何もせず眠り直す。
+      #
+      # 判定基準は expected_midnight_ts（sleep_until_next が眠る直前に計算・保存
+      # する、「次に迎えるべき日付の 00:00:00」のタイムスタンプ）。実際の起床時刻
+      # ではなく保存済みの目標と比較するので、10分早くても30日後でも正しく動く。
+      # sleep_duration の保険経路（globals の初期値 0 のまま）や電源断からの復帰
+      # （起床要因が TIMER でない）ではこの判定自体を通らないため、通常どおり
+      # 処理が進む。
+      - if:
+          condition:
+            lambda: |-
+              return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER
+                  && id(time_synced) && id(jst).now().is_valid()
+                  && (time_t) id(jst).now().timestamp < (time_t) id(expected_midnight_ts);
+          then:
+            - logger.log: "定期起床ですが、まだ日付が変わっていません。00:30 を狙って眠り直します"
+            - lambda: 'esp_ota_mark_app_valid_cancel_rollback();'
+            - script.execute: sleep_until_next
+          else:
+            # ------------------------------------------------------------------
+            # ファームウェアの確認は**画像取得より先に**行う。
+            #
+            # 回復手段が回復対象に依存してはいけないため。トークンを交換したり画像の
+            # URL を変えたりした場合、古いファームは画像を取得できない。
+            # 「画像取得 → 失敗で就寝」という順序だとここに到達せず、端末が永久に
+            # 更新を受け付けなくなる。実家まで USB を持って行く以外に手がなくなる。
+            - script.execute: check_firmware
+            - wait_until:
+                condition:
+                  lambda: 'return !id(check_firmware).is_running();'
+                timeout: 30s
+            # ------------------------------------------------------------------
+
+            # component.update は非同期。ここで眠らせると取得・描画の前に落ちるので、
+            # 眠る判断は online_image の on_download_finished / on_error から呼ぶ。
+            - component.update: calendar_image
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -224,28 +263,52 @@ script:
       # 確定の条件として十分。途中でクラッシュすればここには来ず、巻き戻しが効く。
       - lambda: 'esp_ota_mark_app_valid_cancel_rollback();'
 
-      # **本物の同期を待つ。値の妥当性（is_valid）では足りない。**
-      # is_valid() は「値の範囲が妥当か」しか見ないので、10分ずれた時刻も通す。
-      # 詳しくは globals の time_synced のコメント参照。
-      - wait_until:
-          condition:
-            lambda: 'return id(time_synced);'
-          timeout: 60s
+      # time_synced の待機は on_boot 側（Wi-Fi 接続直後）に引き上げ済み。
+      # ここまで来ているなら、同期できているかの結果は出ている。
       - if:
           condition:
             lambda: 'return id(time_synced) && id(jst).now().is_valid();'
           then:
-            - logger.log: "次の JST 00:00 まで眠ります"
-            - deep_sleep.enter:
-                id: sleeper
-                until: '00:00:00'
-                time_id: jst
+            - script.execute: sleep_until_next
           else:
             # Wi-Fi や NTP の一時的な不調を想定。1時間後に起きてやり直す。
             - logger.log: "時刻を取得できませんでした。1時間後にやり直します"
             - deep_sleep.enter:
                 id: sleeper
                 sleep_duration: 1h
+
+  # 次の定期起床を予約して眠る。on_boot の早期リターンと finish の両方から呼ぶ。
+  #
+  # ターゲットは 00:00 ちょうどではなく 00:30。deep_sleep のタイマー（内蔵 RC
+  # 発振器、実測で 24時間につき約10分ドリフト）が早まる方向にずれても、日付が
+  # 変わったあとに着地するようマージンを取っている。
+  #
+  # 同時に、次に起きたとき「日付が変わったか」を判定するための基準時刻
+  # （expected_midnight_ts）を計算して保存する。判定用の基準はあくまで
+  # 00:00:00 であり、スリープの目標（00:30）とは別物。00:30 をそのまま判定に
+  # 使うと「00:30 に届いたか」を見てしまい、23:50 起床でも 00:00 起床でも同じ
+  # 「失敗」と判定されて、単に起床を遅らせただけになってしまう。
+  - id: sleep_until_next
+    mode: single
+    then:
+      - lambda: |-
+          auto now = id(jst).now();
+          auto midnight = now;
+          midnight.hour = 0;
+          midnight.minute = 0;
+          midnight.second = 0;
+          midnight.recalc_timestamp_utc();
+          time_t midnight_ts = midnight.timestamp - esphome::ESPTime::timezone_offset();
+          if (midnight_ts <= now.timestamp) {
+            midnight_ts += 24 * 3600;  // 今日の 00:00 はもう過ぎている
+          }
+          id(expected_midnight_ts) = (int32_t) midnight_ts;
+          ESP_LOGI("sleep", "次回の判定基準(次の00:00): %d", (int) midnight_ts);
+      - logger.log: "次の JST 00:30 まで眠ります"
+      - deep_sleep.enter:
+          id: sleeper
+          until: '00:30:00'
+          time_id: jst
 
 globals:
   # SNTP が**ネットワークから応答を受け取って**時刻を直したか。
@@ -277,6 +340,23 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '"未確認"'
+
+  # 「次に迎えるべき日付の 00:00:00」の UTC タイムスタンプ。定期起床のたびに
+  # sleep_until_next が更新し、次の on_boot がこれと現在時刻を比較して、まだ
+  # 日付が変わっていない早期起床かどうかを判定する。
+  #
+  # **deep_sleep を越えて残す必要があるので restore_value: yes。** NVS に保存
+  # され、deep_sleep.enter が呼ぶ App.run_safe_shutdown_hooks() のタイミングで
+  # 確実に書き込まれる。
+  #
+  # 電源が完全に落ちた場合（電池切れ等）はこの値も失われうるが、その場合の
+  # 復帰は起床要因が電源投入/リセットになり、この判定自体を通らないので
+  # 実害はない。初期値 0（1970年）でも「現在時刻 >= 0」は常に真になるだけ
+  # なので、初回起動時に誤って早期リターンする心配もない。
+  - id: expected_midnight_ts
+    type: int32_t
+    restore_value: yes
+    initial_value: '0'
 
 # until: で次の 00:00 までの秒数を計算するのに使う。
 # 起床のたびに同期し直すので、固定時間スリープのようなずれの蓄積が起きない。
@@ -363,12 +443,15 @@ binary_sensor:
     on_press:
       - logger.log: "→ボタンが押されました"
 # ------------------------------------------------------------------
-# 起床時刻は script finish の deep_sleep.enter が毎回決める。
-# ここの run_duration と sleep_duration はどちらも保険。
+# 起床時刻は script sleep_until_next の deep_sleep.enter が毎回決める。
+# on_boot の早期リターン（まだ日付が変わっていない）と finish（通常の就寝）の
+# 両方がこの script を呼ぶので、眠る場所は実質ここ1箇所に集約されている。
+# 下の run_duration と sleep_duration はどちらも保険。
 #
 # run_duration: script が呼ばれないまま固まったときに必ず眠らせる上限。
-#   通常は約15秒、保守モードでも約2分半で script が眠らせるので普段は発火しない。
-#   短くすると取得や描画の途中で切られるため、あえて余裕を持たせる。
+#   通常は約15秒（早期リターン時はさらに短い）、保守モードでも約2分半で
+#   script が眠らせるので普段は発火しない。短くすると取得や描画の途中で
+#   切られるため、あえて余裕を持たせる。
 # sleep_duration: その保険経路で眠るときの時間。until が使えていないので、
 #   1時間後に起こして通常の流れをやり直させる。
 #
