@@ -12,8 +12,20 @@ preview_urls = false
 
 # Workers Logs。実家設置後、端末が生きているかを後から確認する手段として
 # 有効化する（無料枠: 1日あたり約20万イベント、保持3日間）。
-[observability]
+#
+# [observability] だけの旧い書き方だと persist が明示されず、デプロイの
+# たびにダッシュボード側の設定が消えて見える現象があったため、ダッシュボード
+# が提示する完全な形（logs/traces を明示、persist も明示）に揃えた。
+[observability.logs]
 enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
 
 # バイナリは静的アセットとして置く。直接は公開せず、認証を通してから
 # Worker が env.ASSETS 経由で読み出す。

@@ -13,7 +13,19 @@ preview_urls = false
 # 有効化する（無料枠: 1日あたり約20万イベント、保持3日間。この用途では
 # 直近数日のトラブルシュートに使う。長期の傾向はダッシュボードの
 # Analytics グラフの方を見る）。
-[observability]
+#
+# [observability] だけの旧い書き方だと persist が明示されず、デプロイの
+# たびにダッシュボード側の設定が消えて見える現象があったため、ダッシュボード
+# が提示する完全な形（logs/traces を明示、persist も明示）に揃えた。
+[observability.logs]
 enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
 
 # 秘密トークンは wrangler secret put ACCESS_TOKEN で設定する（コードに置かない）
