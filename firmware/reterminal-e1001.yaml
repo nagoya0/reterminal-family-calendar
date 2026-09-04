@@ -68,6 +68,9 @@ esphome:
             lambda: 'return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;'
           then:
             - logger.log: "緑ボタンでの起床。ブザーを鳴らします"
+            # 直前の状態（他の箇所が周波数を変えたか）に依存しないよう、
+            # 鳴らす前に必ず明示する。
+            - output.ledc.set_frequency: { id: buzzer, frequency: 1000Hz }
             # duty 50% が矩形波として最も音が大きい
             - output.set_level: { id: buzzer, level: 50% }
             - delay: 80ms
@@ -77,6 +80,41 @@ esphome:
       - wait_until:
           condition: wifi.connected
           timeout: 60s
+
+      # Wi-Fi に繋がらなければ、この先（時刻同期・ファーム確認・画像取得）は
+      # すべて失敗が確定している。律儀に一つずつタイムアウトを待つと数分を
+      # 無駄にするので、ここで見切って即座にリトライへ眠る。
+      #
+      # リトライは6時間後。実家では USB はもちろん、電池切れも遠隔からは
+      # 直せない。もし長時間 Wi-Fi が復旧しない状況（実家の停電・ルーター
+      # 故障など）なら、1時間おきに起きて試しても解決せず、電池だけ余計に
+      # 減る。逆に一時的な不調（ルーターの瞬断など）なら数時間あれば直る
+      # ことが多いので、6時間で十分実用的。
+      #
+      # ブザーは緑ボタン起床のときだけ、通常より低い音で鳴らす。定期起床
+      # （深夜）では誰も聞いていないので鳴らさない — 画面が更新されないこと
+      # 自体が異常のシグナルになる。緑ボタンのときは電話越しの切り分けに使う
+      # 想定（「ピッ」=起床成功、「ブー」=Wi-Fi失敗、で区別できる）。
+      - if:
+          condition:
+            lambda: 'return !wifi::global_wifi_component->is_connected();'
+          then:
+            - logger.log: "Wi-Fiに接続できませんでした。6時間後にやり直します"
+            - if:
+                condition:
+                  lambda: 'return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;'
+                then:
+                  - logger.log: "緑ボタン起床でWi-Fi接続失敗。低いブザーを鳴らします"
+                  - output.ledc.set_frequency: { id: buzzer, frequency: 300Hz }
+                  - output.set_level: { id: buzzer, level: 50% }
+                  - delay: 300ms
+                  - output.turn_off: buzzer
+                  # 次の正常起床の「ピッ」のために周波数を戻す
+                  - output.ledc.set_frequency: { id: buzzer, frequency: 1000Hz }
+            - lambda: 'esp_ota_mark_app_valid_cancel_rollback();'
+            - deep_sleep.enter:
+                id: sleeper
+                sleep_duration: 6h
 
       # **本物の同期を待つ。値の妥当性（is_valid）では足りない。**
       # is_valid() は「値の範囲が妥当か」しか見ないので、10分ずれた時刻も通す。
@@ -154,6 +192,12 @@ psram:
 
 logger:
   level: DEBUG
+  # reTerminal E Series は USB を CH340K で UART0 に橋渡ししている。
+  # ESP32-S3 向け ESPHome のデフォルトはネイティブ USB_SERIAL_JTAG（別物）
+  # なので、これを明示しないとアプリのログが CH340K 側の USB ポートに一切
+  # 出てこない（ROM の起動ログだけは UART0 固定で出るので紛らわしい）。
+  # 出典: https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome/
+  hardware_uart: UART0
 
 ota:
   # 同一LAN 用。自宅で開発している間はこちらが速い。
@@ -272,11 +316,12 @@ script:
           then:
             - script.execute: sleep_until_next
           else:
-            # Wi-Fi や NTP の一時的な不調を想定。1時間後に起きてやり直す。
-            - logger.log: "時刻を取得できませんでした。1時間後にやり直します"
+            # NTP の一時的な不調を想定。理由は on_boot 側の Wi-Fi 失敗時の
+            # コメント参照（長時間の不調では電池を守る方を優先し、6時間後）。
+            - logger.log: "時刻を取得できませんでした。6時間後にやり直します"
             - deep_sleep.enter:
                 id: sleeper
-                sleep_duration: 1h
+                sleep_duration: 6h
 
   # 次の定期起床を予約して眠る。on_boot の早期リターンと finish の両方から呼ぶ。
   #
@@ -431,8 +476,28 @@ binary_sensor:
     # 取得は on_boot が行うので、ここで component.update は呼ばない。
     # 呼ぶと連打のたびに再取得と全画面リフレッシュ（約6秒）が走り、電池を無駄に
     # 使う。押して起こす → on_boot が取りに行く、で用は足りている。
+    #
+    # **on_press はここに来る時点で「既に起きている状態で押された」ことが
+    # 確定している。** deep_sleep 中は CPU 自体が眠っているので on_press は
+    # 物理的に発火しようがなく、起床のトリガー（INVERT_WAKEUP により
+    # 「離した瞬間」）が起きた直後は GPIO はもう離された状態になっている。
+    # なので起床1回目のブザー（on_boot、1回・80ms）と衝突する心配は無い。
+    #
+    # 予想外の再起動などで既に起きていた場合、押しても on_boot のブザーは
+    # 鳴らないため「故障で無反応」と区別がつかない。同じ高さで2回鳴らし、
+    # 「1回=起床した／2回=起きていたので無視された」で切り分けられるように
+    # する。Wi-Fi 失敗時の低音ブザーが周波数を一時的に変えるので、念のため
+    # 明示的に戻してから鳴らす。
     on_press:
       - logger.log: "緑ボタンが押されました"
+      - output.ledc.set_frequency: { id: buzzer, frequency: 1000Hz }
+      - output.set_level: { id: buzzer, level: 50% }
+      - delay: 80ms
+      - output.turn_off: buzzer
+      - delay: 80ms
+      - output.set_level: { id: buzzer, level: 50% }
+      - delay: 80ms
+      - output.turn_off: buzzer
   - platform: gpio
     name: "Button Left"
     id: btn_left
@@ -456,7 +521,10 @@ binary_sensor:
 #   script が眠らせるので普段は発火しない。短くすると取得や描画の途中で
 #   切られるため、あえて余裕を持たせる。
 # sleep_duration: その保険経路で眠るときの時間。until が使えていないので、
-#   1時間後に起こして通常の流れをやり直させる。
+#   6時間後に起こして通常の流れをやり直させる。この経路に来た時点で
+#   「script が固まる」という本来起きないはずの異常が起きている。リトライ
+#   したところで状況が変わるとは限らず、実家では遠隔からすぐに対応も
+#   できないため、電池を守る方を優先し、他のリトライ経路と同じ6時間にした。
 #
 # **緑ボタンはどんなファームを焼いても必ず戻ってこられる入口になる。**
 # 新しいファームに不具合があっても、押せば必ず2分の作業窓が開く。
@@ -464,7 +532,7 @@ binary_sensor:
 deep_sleep:
   id: sleeper
   run_duration: 5min
-  sleep_duration: 1h
+  sleep_duration: 6h
   wakeup_pin:
     number: GPIO3
     mode: INPUT_PULLUP
