@@ -53,15 +53,13 @@ function weatherIcon(name) {
  * 確率は「降るか」、量は「どれだけ」を答えており、役割が違う。気象庁自身が
  * 「確率が高いと雨量が多くなるという意味ではありません」と注記しているとおりで、
  * 70%・0.1mm（高い確率でぱらつく）のような状態は両方出さないと伝わらない。
- *
- * 量が0のときは確率だけにする。「0mm」は情報を足さないうえ、桁が増えて読みにくい。
+ * 量が0でも同じ理由で省略しない（両方出すという決定に例外を作らない）。
  */
 function bandRain(slot) {
   if (slot.pop === null) return '—';
   const pop = `${slot.pop}%`;
-  if (!slot.mm) return pop;
-  // 1mm以上は整数で十分。1mm未満は小数1桁でないと0になってしまう。
-  const mm = slot.mm >= 1 ? Math.round(slot.mm) : slot.mm.toFixed(1);
+  // 1mm以上は整数で十分。1mm未満は小数1桁でないと0になってしまう(0そのものは除く)。
+  const mm = slot.mm >= 1 ? Math.round(slot.mm) : (slot.mm === 0 ? '0' : slot.mm.toFixed(1));
   return `${pop}・${mm}mm`;
 }
 
