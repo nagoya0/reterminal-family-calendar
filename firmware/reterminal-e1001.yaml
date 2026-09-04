@@ -1,8 +1,9 @@
 # reTerminal E1001 — 実家向けカレンダー表示端末
 #
-# 画像は Cloudflare Worker（image_url）から取得し、JST 00:00 に deep_sleep
-# から起床して描画する。緑ボタン（EXT0）で起こしたときは2分の保守モードに
-# 入り、ファームウェアも http_request OTA で遠隔から更新できる
+# 画像は Cloudflare Worker（image_url）から取得し、JST 00:30 を目標に deep_sleep
+# から起床して描画する（RTC ドリフトのマージンを見て 00:00 ちょうどからずらした）。
+# 緑ボタン（EXT0）で起こしたときは2分の保守モードに入り、ファームウェアも
+# http_request OTA で遠隔から更新できる
 # （worker-fw/ 側。npm run push-firmware → 端末が次の起動時に自動で取得）。
 # 詳しい経緯は DECISIONS.md 参照。
 #
@@ -304,7 +305,9 @@ script:
           }
           id(expected_midnight_ts) = (int32_t) midnight_ts;
           ESP_LOGI("sleep", "次回の判定基準(次の00:00): %d", (int) midnight_ts);
-      - logger.log: "次の JST 00:30 まで眠ります"
+      - logger.log:
+          format: "次の JST 00:30 まで眠ります（電池 %.0f%%）"
+          args: ['id(battery_level).state']
       - deep_sleep.enter:
           id: sleeper
           until: '00:30:00'

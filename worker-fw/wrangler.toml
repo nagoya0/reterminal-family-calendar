@@ -10,6 +10,11 @@ workers_dev = true
 # 無用に増やす理由がない。
 preview_urls = false
 
+# Workers Logs。実家設置後、端末が生きているかを後から確認する手段として
+# 有効化する（無料枠: 1日あたり約20万イベント、保持3日間）。
+[observability]
+enabled = true
+
 # バイナリは静的アセットとして置く。直接は公開せず、認証を通してから
 # Worker が env.ASSETS 経由で読み出す。
 [assets]
