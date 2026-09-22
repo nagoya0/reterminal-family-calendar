@@ -11,6 +11,10 @@
 
 substitutions:
   name: family-calendar
+  # 自分の Cloudflare アカウントのサブドメインに置き換えて使う。
+  # 実際の値をここに書かないのは、家族の予定を配信しているエンドポイントを
+  # 名指しにしないため（Worker 側は国とトークンで弾いているが、到達できる
+  # ホスト名をリポジトリに残す理由がない）。
   image_url: "https://family-calendar.<your-subdomain>.workers.dev/cal"
   fw_base: "https://family-calendar-fw.<your-subdomain>.workers.dev"
 

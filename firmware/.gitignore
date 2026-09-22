@@ -3,3 +3,8 @@
 # You can modify this file to suit your needs.
 /.esphome/
 /secrets.yaml
+
+# 工場ファームのダンプ。NVS に Wi-Fi 認証情報が平文で残るため置かない
+# （firmware/factory-backup/README.md 参照）。手元のみで保管する。
+factory-backup/*.bin
+factory-backup/*.bin.gz
