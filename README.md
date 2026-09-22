@@ -9,7 +9,8 @@ The device is a [Seeed reTerminal E1001](https://www.seeedstudio.com/reTerminal-
 job and a single Cloudflare Worker.
 
 > **Design constraint:** the person using it is not the person maintaining it, and the
-> maintainer is several hundred kilometers away. Every decision below follows from that.
+> maintainer is a drive away — close enough to visit, far enough that every visit is a
+> planned trip rather than a quick fix. Every decision below follows from that.
 
 ## How it works
 
