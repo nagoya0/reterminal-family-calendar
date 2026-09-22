@@ -2,27 +2,23 @@
 //   npm run check                  サービスアカウントから見えるカレンダーを一覧
 //   npm run check -- <カレンダーID>  そのカレンダーを直接読めるか確認して予定を表示
 //
-// このスクリプトは Actions から実行することがあり（実家からスマホで叩く用途）、
-// 公開リポジトリでは実行ログも公開される。そのため予定名・カレンダー名・
-// アドレスの類は既定では伏せ、件数と可否だけを出す。それだけでも
-// 「共有できているか」「読めているか」は判定できる。
-// 手元で中身まで見たいときは LOG_EVENT_TITLES=1 を付ける。
+// カレンダーIDは引数が無ければ CALENDAR_ID から取る。build.js とは逆の順で、
+// **引数を優先する**。npm run check は .env を読むので、env を先に見ると
+// 「引数で別のカレンダーを指定したのに .env の方が使われる」が黙って起きる。
+// これは特定のカレンダーを名指しで確認する道具なので、名指しの方を立てる。
+//
+// Actions から実行することがあり（実家からスマホで叩く用途）、そこでは
+// ワークフローの入力ではなく Secrets 経由で渡す。入力にすると値が実行コマンドと
+// 実行画面の両方に残り、公開リポジトリではそれがそのまま公開されるため。
+//
+// 出力の伏字については logging.js を参照。
 import { google } from 'googleapis';
 import { fetchEvents, loadCredentials } from './gcal.js';
 import { ymd, addDays, describeDay } from './datetime.js';
 import { eventsForDay, timeLabel } from './events.js';
+import { LOG_DETAILS, mask } from './logging.js';
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
-
-/** 中身まで出すか。既定は出さない（公開ログに載るため） */
-const showDetails = process.env.LOG_EVENT_TITLES === '1';
-
-/** 識別子を伏せる。先頭2文字だけ残して、取り違えの判別はできるようにする */
-function mask(value) {
-  if (showDetails) return value;
-  const s = String(value ?? '');
-  return s.length <= 2 ? '«伏字»' : `${s.slice(0, 2)}…«伏字»`;
-}
 
 function client() {
   const credentials = loadCredentials();
@@ -34,7 +30,7 @@ function client() {
 }
 
 const cal = client();
-const calendarId = process.argv[2];
+const calendarId = process.argv[2] ?? process.env.CALENDAR_ID;
 
 // 1) 一覧に出るか（共有されると出ることがある。出れば ID も分かる）
 const list = await cal.calendarList.list();
@@ -79,7 +75,7 @@ for (let i = 0; i < 7; i++) {
   const label = `${d.month}/${d.day}(${d.weekday})`.padEnd(10);
   const detail = day.length === 0
     ? '—'
-    : showDetails
+    : LOG_DETAILS
       ? day.map((e) => `${timeLabel(e, key)} ${e.title}`).join(' / ')
       : `${day.length}件`;
   console.log(`   ${label} ${detail}`);

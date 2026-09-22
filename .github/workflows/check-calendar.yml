@@ -1,14 +1,13 @@
 # カレンダーの共有が成功したかを手動で確認する。
 # 実家など手元にPCが無い場所から、スマホのブラウザで実行してログを読む用途。
+#
+# カレンダーIDは入力ではなく Secrets から渡す。入力にすると、値が実行コマンドと
+# 実行画面の両方に残り、公開リポジトリではそれがそのまま公開されるため
+# （Secrets ならログ上で伏せられる）。スマホから長いIDを打たずに済む利点もある。
 name: カレンダー共有の確認
 
 on:
   workflow_dispatch:
-    inputs:
-      calendar_id:
-        description: 'カレンダーID（分かっていれば入力。空なら見えるカレンダーの一覧だけ表示）'
-        required: false
-        default: ''
 
 jobs:
   check:
@@ -30,4 +29,5 @@ jobs:
       - name: 共有を確認
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-        run: node src/check.js "${{ inputs.calendar_id }}"
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+        run: node src/check.js

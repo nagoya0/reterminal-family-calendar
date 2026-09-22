@@ -15,6 +15,7 @@ import { renderHtml } from './render.js';
 import { screenshotAll, toMonochrome } from './shoot.js';
 import { ymd, addDays, describeDay, startOfDay } from './datetime.js';
 import { eventsForDay, timeLabel } from './events.js';
+import { LOG_DETAILS, mask } from './logging.js';
 
 const OUT = 'dist';
 
@@ -52,17 +53,13 @@ const [events, forecast] = await Promise.all([
 
 // 取得内容をログに残す。画像だけでは何を描いたか後から追えないため。
 //
-// ただし予定名は既定では出さない。このリポジトリは公開されており、Actions の
-// 実行ログも公開される。ログに予定名が載ると、カレンダーの中身がそのまま
-// 読めてしまう。日付ごとの件数だけでも「取得できているか」「どの日に描かれる
-// はずか」は追えるので、障害の切り分けには足りる。
+// ただし予定名とカレンダーIDは既定では出さない。日付ごとの件数だけでも
+// 「取得できているか」「どの日に描かれるはずか」は追えるので、障害の
+// 切り分けには足りる。伏字の方針は logging.js を参照。
 //
-// 手元で中身まで見たいときは LOG_EVENT_TITLES=1 を付ける。既定を「出さない」
-// 側にしてあるのは、CI かどうかの自動判定に頼ると、判定を外したときに黙って
-// 漏れるため。
-const logTitles = process.env.LOG_EVENT_TITLES === '1';
-
-console.log(`取得: ${events.length} 件 (${calendarId})`);
+// カレンダーIDは Actions では Secrets 由来なのでログ側でも伏せられるが、
+// それに頼らず出力側でも伏せる。ローカルや別のCIでは伏せられないため。
+console.log(`取得: ${events.length} 件 (${mask(calendarId)})`);
 for (let i = 0; i < 8; i++) {
   const key = addDays(today, i);
   const d = describeDay(key);
@@ -71,7 +68,7 @@ for (let i = 0; i < 8; i++) {
 
   if (day.length === 0) {
     console.log(`  ${label} —`);
-  } else if (logTitles) {
+  } else if (LOG_DETAILS) {
     console.log(`  ${label} ${day.map((e) => `${timeLabel(e, key)} ${e.title}`).join(' / ')}`);
   } else {
     console.log(`  ${label} ${day.length}件`);
