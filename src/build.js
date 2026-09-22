@@ -51,15 +51,31 @@ const [events, forecast] = await Promise.all([
 ]);
 
 // 取得内容をログに残す。画像だけでは何を描いたか後から追えないため。
+//
+// ただし予定名は既定では出さない。このリポジトリは公開されており、Actions の
+// 実行ログも公開される。ログに予定名が載ると、カレンダーの中身がそのまま
+// 読めてしまう。日付ごとの件数だけでも「取得できているか」「どの日に描かれる
+// はずか」は追えるので、障害の切り分けには足りる。
+//
+// 手元で中身まで見たいときは LOG_EVENT_TITLES=1 を付ける。既定を「出さない」
+// 側にしてあるのは、CI かどうかの自動判定に頼ると、判定を外したときに黙って
+// 漏れるため。
+const logTitles = process.env.LOG_EVENT_TITLES === '1';
+
 console.log(`取得: ${events.length} 件 (${calendarId})`);
 for (let i = 0; i < 8; i++) {
   const key = addDays(today, i);
   const d = describeDay(key);
   const day = eventsForDay(events, key);
-  console.log(
-    `  ${`${d.month}/${d.day}(${d.weekday})`.padEnd(10)} ` +
-    (day.length === 0 ? '—' : day.map((e) => `${timeLabel(e, key)} ${e.title}`).join(' / ')),
-  );
+  const label = `${d.month}/${d.day}(${d.weekday})`.padEnd(10);
+
+  if (day.length === 0) {
+    console.log(`  ${label} —`);
+  } else if (logTitles) {
+    console.log(`  ${label} ${day.map((e) => `${timeLabel(e, key)} ${e.title}`).join(' / ')}`);
+  } else {
+    console.log(`  ${label} ${day.length}件`);
+  }
 }
 
 mkdirSync(OUT, { recursive: true });
