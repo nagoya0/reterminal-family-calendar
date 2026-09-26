@@ -5,7 +5,6 @@
   "type": "module",
   "description": "実家の電子ペーパー端末に Google カレンダーを表示する",
   "scripts": {
-    "preview": "node src/preview.js",
     "shots": "node src/shots.js",
     "check": "node --env-file-if-exists=.env src/check.js",
     "build": "node --env-file-if-exists=.env src/build.js",

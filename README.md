@@ -12,6 +12,10 @@ job and a single Cloudflare Worker.
 > maintainer is a drive away — close enough to visit, far enough that every visit is a
 > planned trip rather than a quick fix. Every decision below follows from that.
 
+## Demo
+
+![Screenshot: today's events on the left, the next 30 days on the right, with a weather strip](docs/screenshot.png)
+
 ## How it works
 
 ```
@@ -90,12 +94,14 @@ city; [DECISIONS.md](DECISIONS.md) records both failures in detail.
 ```bash
 npm install
 cp firmware/secrets.yaml.example firmware/secrets.yaml   # fill in Wi-Fi and OTA values
-npm run preview                                          # render with fixture data, no credentials needed
+npm run shots                                            # render with fixture data, no credentials needed
 ```
 
-`npm run preview` works offline against fixture data, so the rendering can be iterated on
-without touching a real calendar. Live runs need a Google service account and `CALENDAR_ID`;
-secrets go in `.env` locally and in Actions secrets in CI, never in the repository.
+`npm run shots` works offline against fixture data, so the rendering can be iterated on
+without touching a real calendar. It renders every layout scenario (crowded day, empty day,
+long titles, ...) and opens them in the browser for a quick visual check. Live runs need a
+Google service account and `CALENDAR_ID`; secrets go in `.env` locally and in Actions secrets
+in CI, never in the repository.
 
 ## A note on privacy
 
