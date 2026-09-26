@@ -11,12 +11,19 @@
 
 substitutions:
   name: family-calendar
-  # 自分の Cloudflare アカウントのサブドメインに置き換えて使う。
-  # 実際の値をここに書かないのは、家族の予定を配信しているエンドポイントを
-  # 名指しにしないため（Worker 側は国とトークンで弾いているが、到達できる
-  # ホスト名をリポジトリに残す理由がない）。
-  image_url: "https://family-calendar.<your-subdomain>.workers.dev/cal"
-  fw_base: "https://family-calendar-fw.<your-subdomain>.workers.dev"
+
+# image_url と fw_base は firmware/worker_urls.yaml（.gitignore 済み）から読む。
+# 実際の値をリポジトリに書かないのは、家族の予定を配信しているエンドポイントを
+# 名指しにしないため（Worker 側は国とトークンで弾いているが、到達できる
+# ホスト名をリポジトリに残す理由がない）。
+#
+# プレースホルダのままでもビルドが通ってしまうと、その状態で OTA を焼いた
+# ときに画像取得先・次の OTA 取得先の両方を失い、実家の端末を遠隔から
+# 復旧できなくなる。そのため空文字や仮の値でごまかさず、worker_urls.yaml
+# が無ければ `esphome config` 自体が失敗するようにしてある
+# （ひな形は firmware/worker_urls.yaml.example 参照）。
+packages:
+  worker_urls: !include worker_urls.yaml
 
 esphome:
   name: ${name}

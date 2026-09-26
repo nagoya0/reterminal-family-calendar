@@ -1,0 +1,5 @@
+# firmware/worker_urls.yaml として複製して実際の値を入れる。
+# worker_urls.yaml は .gitignore 済み。
+substitutions:
+  image_url: "https://family-calendar.<your-subdomain>.workers.dev/cal"
+  fw_base: "https://family-calendar-fw.<your-subdomain>.workers.dev"
