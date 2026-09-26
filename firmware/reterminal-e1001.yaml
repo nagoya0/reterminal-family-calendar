@@ -192,8 +192,8 @@ esp32:
     type: esp-idf
     advanced:
       # 32MB フラッシュで OTA を使うには ESP-IDF の実験的機能の有効化が要る。
-      # OTA を諦める選択肢もあるが、設置後は実家まで車で1時間以内とはいえ出向く手間が大きいため、
-      # Wi-Fi 経由で更新できる手段は残しておく。
+      # OTA を諦める選択肢もあるが、設置後は実家まで車で1時間以内とはいえ
+      # 出向く手間が大きいため、Wi-Fi 経由で更新できる手段は残しておく。
       enable_idf_experimental_features: true
 
 # ESP32-S3R8 は 8MB の octal PSRAM。800x480 の画像バッファ用に有効化する。

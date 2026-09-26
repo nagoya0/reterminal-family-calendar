@@ -5,7 +5,7 @@ https://erikflowers.github.io/weather-icons/
 Copyright (c) Erik Flowers
 
 フォント（および本ディレクトリの SVG）は **SIL Open Font License 1.1** で提供されている。
-https://scripts.sil.org/OFL
+全文は同じディレクトリの OFL.txt。
 
 必要なアイコンだけを個別 SVG として取り込んでいる。フォント一式（TTF 99KB）を
 積むより軽く、インライン展開してサイズを自由に決められるため。

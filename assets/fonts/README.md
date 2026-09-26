@@ -6,7 +6,8 @@
 変わり、開発機（macOS）と GitHub Actions（Ubuntu）でレイアウトがずれるため。
 読み込めない場合はビルドを失敗させている（黙って別の書体に落ちる方が困る）。
 
-- ライセンス: SIL Open Font License 1.1
+- ライセンス: SIL Open Font License 1.1（NOTO-SANS-JP-OFL.txt）
+- 出典: https://github.com/notofonts/noto-cjk
 
 ## ter-u12b.bdf / ter-u16b.bdf（Terminus）
 
