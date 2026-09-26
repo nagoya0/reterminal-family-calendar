@@ -51,7 +51,7 @@ export async function fetchEvents(calendarId, { now = new Date(), days = 7 } = {
 
 /**
  * 任意の期間の予定を取得する。
- * singleEvents:true で繰り返し予定を個々の回に展開させる（毎週のデイサービス等）。
+ * singleEvents:true で繰り返し予定を個々の回に展開させる（毎週の定期予定等）。
  */
 export async function fetchRange(calendarId, timeMin, timeMax) {
   const cal = calendarClient();
