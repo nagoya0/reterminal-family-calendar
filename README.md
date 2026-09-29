@@ -66,8 +66,9 @@ generated after midnight arrives too late. The nightly job runs six times betwee
 23:47 JST — and never on the hour, because GitHub documents that :00 is its busiest slot, and
 runs there were observed 2 to 6 hours late or dropped entirely.
 
-**The refresh button exists, but my mother was never told about it.** Explaining a button that
-is only needed when something is broken adds a thing to worry about. It is documented instead as
+**Only two things were explained to her: the screen changes at midnight, and a new event does
+not appear until then.** The refresh button is left out of that explanation — it is only needed
+when something is broken, and would be one more thing to worry about. It stays documented as
 something *I* can ask her to press over the phone.
 
 **Diagnostics are designed for a phone call.** Press the green button and ask: "did the screen
