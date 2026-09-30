@@ -29,10 +29,21 @@ persist = true
 
 # バイナリは静的アセットとして置く。直接は公開せず、認証を通してから
 # Worker が env.ASSETS 経由で読み出す。
+#
+# **run_worker_first が無いと、この前提は成り立たない。** 既定では、リクエストが
+# 静的アセットに一致すると Worker を起動せずにそのまま配信する。/firmware.bin が
+# 国の制限も認証も通らずに取れる状態になっていた。バイナリには secrets.yaml の値
+# （Wi-Fi のパスワードなど）が焼き込まれている。
 [assets]
 directory = "public"
 binding = "ASSETS"
+run_worker_first = true
 
 # 認証情報は wrangler secret put FW_USER / FW_PASSWORD で設定する（コードに置かない）。
 # 配信中のバイナリのビルド時刻と MD5 は deploy のたびに変わるので、
 # npm run push-firmware が --var で渡す。
+#
+# **この Worker を wrangler deploy で直接デプロイしない。** --var を付け忘れると
+# FW_VERSION と FW_MD5 が消え、/fw.version が 404 になって遠隔更新が止まる
+# （2026-09-05 に設定変更のデプロイで実際に起きた）。設定だけ変えたいときも、
+# 配信中の値を --var で明示して渡す。
