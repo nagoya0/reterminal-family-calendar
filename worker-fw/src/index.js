@@ -16,8 +16,12 @@ const ALLOWED_COUNTRY = 'JP';
 const ASSET_PATH = '/firmware.bin';
 
 /**
- * 比較は長さと内容の両方を一定時間で行う。
- * 応答時間の差から正解の文字数を推測されるのを防ぐため。
+ * 内容は、一致しない位置に関わらず最後まで比べる（何文字目まで合っていたかを
+ * 応答時間から推測させないため）。
+ *
+ * 長さが違えばその場で false を返すので、長さは応答時間から分かりうる。
+ * パスワードは固定長の乱数で、長さが知られても総当たりの手間は変わらないため、
+ * そこまでは揃えていない。
  */
 function constantTimeEquals(given, expected) {
   if (typeof given !== 'string' || typeof expected !== 'string') return false;

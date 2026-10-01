@@ -9,8 +9,12 @@ import { IMAGES, BUILT_AT } from './image.js';
 const ALLOWED_COUNTRY = 'JP';
 
 /**
- * トークン比較は長さと内容の両方を一定時間で行う。
- * 応答時間の差から正解の文字数を推測されるのを防ぐため。
+ * トークンの内容は、一致しない位置に関わらず最後まで比べる（何文字目まで
+ * 合っていたかを応答時間から推測させないため）。
+ *
+ * 長さが違えばその場で false を返すので、長さは応答時間から分かりうる。
+ * トークンは固定長の乱数（192ビット）で、長さが知られても総当たりの手間は
+ * 変わらないため、そこまでは揃えていない。
  */
 function tokenMatches(given, expected) {
   if (typeof given !== 'string' || typeof expected !== 'string') return false;

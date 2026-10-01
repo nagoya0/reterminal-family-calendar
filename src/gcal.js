@@ -73,7 +73,9 @@ export async function fetchRange(calendarId, timeMin, timeMax) {
   } while (pageToken);
 
   return items
-    // 辞退した予定は表示しない
+    // 取り消された（削除された）予定を除く。辞退した予定（参加者としての
+    // responseStatus が declined）は見ていないので、そのまま表示される
+    // （表示されて構わないと判断している）。
     .filter((it) => it.status !== 'cancelled')
     .map(normalize);
 }
