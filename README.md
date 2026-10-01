@@ -1,8 +1,8 @@
 # Family Calendar on E-Paper
 
 A wall-mounted e-paper display that shows my mother's Google Calendar and the weather,
-installed at my parents' house. It wakes at midnight, fetches one image, draws it, and sleeps
-again — about 30 seconds of activity per day.
+installed at my parents' house. It wakes shortly after midnight, fetches one image, draws it,
+and sleeps again — under a minute of activity per day.
 
 The device is a [Seeed reTerminal E1001](https://www.seeedstudio.com/reTerminal-E1001-p-6534.html)
 (7.5" monochrome e-paper, ESP32-S3) running ESPHome. Everything else is a nightly GitHub Actions
@@ -35,7 +35,7 @@ job and a single Cloudflare Worker.
   Cloudflare Worker  ── serves today's image, chosen by date
         │
         ▼
-  reTerminal E1001 ── wakes 00:00 → HTTP GET → draw → deep sleep
+  reTerminal E1001 ── wakes 00:30 → HTTP GET → draw → deep sleep
 ```
 
 Three days of images are generated each run and the Worker picks by date, so a skipped or
@@ -43,7 +43,7 @@ delayed Actions run does not leave the display stale.
 
 ## Decisions worth explaining
 
-The full record is in [DECISIONS.md](DECISIONS.md) (Japanese, 640 lines). A few that shaped the
+The full record is in [DECISIONS.md](DECISIONS.md) (Japanese). A few that shaped the
 system:
 
 **The layout came from the data, not from a mockup.** The first design gave equal weight to
@@ -61,10 +61,16 @@ instead. Either source can fail without taking the weather panel down with it.
 **No object storage.** Each PNG is about 3 KB, small enough to inline into the Worker script
 itself. R2 or KV would add a dependency and a failure mode in exchange for nothing.
 
-**Images are built the evening before.** The device wakes exactly at 00:00, so an image
-generated after midnight arrives too late. The nightly job runs six times between 18:47 and
-23:47 JST — and never on the hour, because GitHub documents that :00 is its busiest slot, and
-runs there were observed 2 to 6 hours late or dropped entirely.
+**Images are built the evening before.** The device wakes soon after the date changes, so the
+image for the new day has to be waiting already. The nightly job runs six times between 18:47
+and 23:47 JST — and never on the hour, because GitHub documents that :00 is its busiest slot,
+and runs there were observed 2 to 6 hours late or dropped entirely.
+
+**The device aims for 00:30, not 00:00.** Its sleep timer runs on an internal RC oscillator
+that runs about 1.2% fast, so after a day asleep it wakes 15 to 20 minutes early. Aiming
+exactly at midnight would wake it on the previous day. With the half-hour margin it has woken
+between 00:09 and 00:16 every night, and if it ever wakes before the date has changed, it goes
+back to sleep without fetching anything.
 
 **Only two things were explained to her: the screen changes at midnight, and a new event does
 not appear until then.** The refresh button is left out of that explanation — it is only needed
@@ -75,9 +81,14 @@ something *I* can ask her to press over the phone.
 flicker?" A flicker means Wi-Fi, DNS, TLS, the Worker, and the display driver are all working —
 one question that tests the whole chain, answerable by someone who is not technical.
 
-**OTA updates bricked the device twice** before the http_request method and a mandatory pause
-between flashes were adopted. There is no USB recovery once the unit is on a wall in another
-city; [DECISIONS.md](DECISIONS.md) records both failures in detail.
+**OTA failed in two different ways during development, both while the device was still within
+reach of a USB cable.** The first update reported success, ran once, and then silently rolled
+back: the device fell asleep before the 60 seconds after which ESPHome confirms a new image, so
+the bootloader reverted it. The firmware now confirms itself just before sleeping. The second
+time, the device stopped responding after several updates in quick succession and had to be
+reflashed over USB; since then each update is checked on the device before the next one. Once
+the unit is on the wall there is no USB recovery, so [DECISIONS.md](DECISIONS.md) records both
+in detail.
 
 ## Repository layout
 
