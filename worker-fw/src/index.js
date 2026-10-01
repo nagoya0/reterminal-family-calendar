@@ -58,8 +58,19 @@ export default {
     if (request.cf?.country !== ALLOWED_COUNTRY) return notFound;
 
     // 認証情報が未設定なら何も配らない。設定漏れで全世界に公開されるのを防ぐ。
+    //
+    // 入れ替えの間だけ FW_PASSWORD_OLD も受け付ける。新しい値を焼いたファームは
+    // 古い値で取りに来るしかないので、両方通さないと更新そのものが届かない。
+    // 端末が新しい値に移ったことをログで確かめてから FW_PASSWORD_OLD を消す。
     if (!env.FW_USER || !env.FW_PASSWORD) return notFound;
-    if (!basicAuthOk(request, `${env.FW_USER}:${env.FW_PASSWORD}`)) return notFound;
+    if (basicAuthOk(request, `${env.FW_USER}:${env.FW_PASSWORD}`)) {
+      console.log('auth=current');
+    } else if (env.FW_PASSWORD_OLD
+      && basicAuthOk(request, `${env.FW_USER}:${env.FW_PASSWORD_OLD}`)) {
+      console.log('auth=old');
+    } else {
+      return notFound;
+    }
 
     const { pathname } = new URL(request.url);
 

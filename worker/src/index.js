@@ -63,8 +63,20 @@ export default {
     if (url.pathname !== '/cal') return notFound;
 
     // トークンはヘッダで受け取る。クエリ文字列だと URL ごとログに残るため。
+    //
+    // 入れ替えの間だけ ACCESS_TOKEN_OLD も受け付ける。端末は OTA で新しい値を
+    // 受け取るまで古い値で取りに来るので、Worker 側を先に切り替えると画像が
+    // 途切れる。どちらで通ったかをログに残し、端末が新しい値に移ったことを
+    // 確かめてから ACCESS_TOKEN_OLD を消す。
     if (!env.ACCESS_TOKEN) return notFound;
-    if (!tokenMatches(bearerToken(request), env.ACCESS_TOKEN)) return notFound;
+    const given = bearerToken(request);
+    if (tokenMatches(given, env.ACCESS_TOKEN)) {
+      console.log('auth=current');
+    } else if (env.ACCESS_TOKEN_OLD && tokenMatches(given, env.ACCESS_TOKEN_OLD)) {
+      console.log('auth=old');
+    } else {
+      return notFound;
+    }
 
     // 前日のうちに翌日分も作ってあるので、いま何日かで選び分ける。
     // これで端末は 0時ちょうどに取りに来ても正しい日付の画像を受け取れる。
