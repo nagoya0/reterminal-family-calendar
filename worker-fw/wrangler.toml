@@ -31,9 +31,9 @@ persist = true
 # Worker が env.ASSETS 経由で読み出す。
 #
 # **run_worker_first が無いと、この前提は成り立たない。** 既定では、リクエストが
-# 静的アセットに一致すると Worker を起動せずにそのまま配信する。/firmware.bin が
-# 国の制限も認証も通らずに取れる状態になっていた。バイナリには secrets.yaml の値
-# （Wi-Fi のパスワードなど）が焼き込まれている。
+# 静的アセットに一致すると Worker を起動せずにそのまま配信するので、/firmware.bin
+# というファイル名のパスで、国の制限も認証も通らずに取れてしまう。バイナリには
+# secrets.yaml の値が焼き込まれるため、すべてのリクエストを Worker に通す。
 [assets]
 directory = "public"
 binding = "ASSETS"

@@ -349,6 +349,57 @@ NVS への保存も要らない。
 （分からなくなったら最新を焼けばよい）。Workers Static Assets に置き、認証を
 通してから Worker が `env.ASSETS` 経由で橋渡しする。
 
+**`[assets]` は `run_worker_first = true` にしてある。** Cloudflare の既定では、
+リクエストが静的アセットに一致すると Worker を起動せずにそのまま配信する。
+Worker の裏に置いたつもりのファイルでも、ファイル名のパス（`/firmware.bin`）で
+認証を通らずに取れてしまう。バイナリには `secrets.yaml` の値が平文で焼き込まれる
+ので、すべてのリクエストを Worker に通す。設定を変えたら、認証なしで
+`curl -sI https://family-calendar-fw.<subdomain>.workers.dev/firmware.bin` を
+叩いて 404 になることを確かめる。
+
+**証明書は検証する（`verify_ssl` は既定の `true`）。** 検証しないと、経路の途中に
+いる者がトークンと FW の認証情報を読めるうえ、偽のファームと偽の MD5 を返して
+書き込ませられる。MD5 は転送中の破損を見つけるだけで、改ざんは防げない。
+ESP-IDF 構成では Mozilla のルート証明書一式（`esp_crt_bundle`）が自動でファームに
+入るので、CA を自分で用意する必要は無い。画像取得も OTA も同じ `http_request`
+コンポーネントを通るので（ESPHome のソースで確認）、両方に効く。検証には正しい
+時刻が要るが、`on_boot` は HTTPS の前に SNTP の同期を待っている。2026-10-01 に、
+検証を有効にしたファームが OTA で入り、そのまま画像と次の更新確認を取得できる
+ことを実機で確認した。
+
+### 認証値の入れ替え
+
+画像用トークン（`ACCESS_TOKEN`）と FW のパスワード（`FW_PASSWORD`）は、端末と
+Worker の両方が持っている。**端末は OTA で新しいファームを受け取るまで古い値で
+来る**ので、Worker を先に新しい値だけにすると、画像も更新も届かなくなり、遠隔
+からは戻せない。
+
+そのため両 Worker は、入れ替えの間だけ古い値（`ACCESS_TOKEN_OLD` /
+`FW_PASSWORD_OLD`）も受け付け、どちらで通ったかを `auth=old` / `auth=current`
+としてログに出す。手順:
+
+1. `firmware/secrets.yaml` の値を新しくする（`fw_authorization_header` は
+   `fw_user:fw_password` の base64 なので一緒に作り直す）
+2. Worker に、**先に古い値を `*_OLD` として入れ、それから本来の名前を新しい値に
+   する**。この順番なら、端末から見て途切れる瞬間が無い
+   ```
+   npx wrangler secret put FW_PASSWORD_OLD  --config worker-fw/wrangler.toml
+   npx wrangler secret put FW_PASSWORD      --config worker-fw/wrangler.toml
+   npx wrangler secret put ACCESS_TOKEN_OLD --config worker/wrangler.toml
+   npx wrangler secret put ACCESS_TOKEN     --config worker/wrangler.toml
+   ```
+3. `npm run push-firmware` して、緑ボタンで起こす
+4. 両 Worker を `wrangler tail` で見る。`auth=old` で `/fw.bin` を取ったあと、
+   再起動した端末が `auth=current` で `/fw.version` と `/cal` を取りに来れば
+   移行は終わっている（2026-10-01 の実績では、取得から約45秒）
+5. `npx wrangler secret delete` で `*_OLD` を消し、古い値が 404 になることを確かめる
+
+**`worker-fw` のコードや設定だけを変えるときも、`wrangler deploy` を素で
+使わない。** `FW_VERSION` と `FW_MD5` は `npm run push-firmware` が `--var` で
+渡しているので、付け忘れると消えて `/fw.version` が 404 になり、遠隔更新が
+止まる。配信中の値を `--var` で明示して渡す（`npx wrangler versions view` で
+確認できる）。
+
 ### 端末のログは当てにならない
 
 `on_boot` の処理は `esphome logs` が接続するより前に終わる。API のハンドシェイクに
